@@ -90,7 +90,7 @@ data "aws_iam_policy_document" "github_actions_ecr_push" {
 }
 
 output "repository_uri" {
-  value = module.public_ecr.repository_uri
+  value = module.public_ecr.repository_url
 }
 
 output "github_actions_role_arn" {
