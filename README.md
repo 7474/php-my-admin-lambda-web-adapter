@@ -1,0 +1,1 @@
+# php-my-admin-lambda-web-adapter
