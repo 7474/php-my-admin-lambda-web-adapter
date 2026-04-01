@@ -1,0 +1,23 @@
+FROM public.ecr.aws/awsguru/aws-lambda-adapter:0.8.4 AS lambda-adapter
+
+FROM phpmyadmin/phpmyadmin:5.2.1
+
+COPY --from=lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
+
+COPY config.user.inc.php /etc/phpmyadmin/config.user.inc.php
+
+COPY basic-auth.conf /etc/apache2/conf-available/basic-auth.conf
+RUN a2enconf basic-auth
+
+# Change Apache listening port from 80 to 8080 for Lambda Web Adapter
+RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
+    && sed -i 's/<VirtualHost \*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-enabled/000-default.conf
+
+COPY docker-entrypoint-with-basic-auth.sh /docker-entrypoint-with-basic-auth.sh
+RUN chmod +x /docker-entrypoint-with-basic-auth.sh
+
+ENV PORT=8080
+EXPOSE 8080
+
+ENTRYPOINT ["/docker-entrypoint-with-basic-auth.sh"]
+CMD ["apache2-foreground"]

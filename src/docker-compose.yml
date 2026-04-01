@@ -1,0 +1,10 @@
+version: "3"
+services:
+  phpmyadmin:
+    build: .
+    environment:
+      BACIC_AUTH_USER: admin
+      BACIC_AUTH_PASSWORD: password
+      PMA_ARBITRARY: 1
+    ports:
+      - "8080:8080"
