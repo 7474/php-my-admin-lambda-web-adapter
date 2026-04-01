@@ -45,7 +45,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6
         with:
           aws-region: us-east-1
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::854403262515:role/phpmyadmin-lambda-adapter-github-actions
           role-session-name: php-my-admin-lambda-web-adapter
 
       - name: Login to Amazon ECR Public
@@ -60,7 +60,7 @@ jobs:
         with:
           images: |
             ghcr.io/${{ github.repository }}
-            public.ecr.aws/${{ secrets.ECR_PUBLIC_ALIAS }}/phpmyadmin-lambda-adapter
+            public.ecr.aws/g2g6t4l2/phpmyadmin-lambda-adapter
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
