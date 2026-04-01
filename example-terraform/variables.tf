@@ -38,3 +38,15 @@ variable "pma_ssl" {
   description = "Enable SSL connection to MySQL server (e.g. for PlanetScale)"
   default     = ""
 }
+
+variable "subnet_ids" {
+  description = "List of subnet IDs to place the Lambda function in (leave empty to deploy outside VPC)"
+  type        = list(string)
+  default     = []
+}
+
+variable "security_group_ids" {
+  description = "List of security group IDs to attach to the Lambda function when deployed in a VPC"
+  type        = list(string)
+  default     = []
+}
