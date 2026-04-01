@@ -9,3 +9,13 @@ updates:
     directory: "/src"
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: "terraform"
+    directory: "/ecr-terraform"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "terraform"
+    directory: "/example-terraform"
+    schedule:
+      interval: "weekly"
