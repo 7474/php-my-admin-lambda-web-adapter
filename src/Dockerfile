@@ -1,6 +1,6 @@
 FROM public.ecr.aws/awsguru/aws-lambda-adapter:0.8.4 AS lambda-adapter
 
-FROM phpmyadmin/phpmyadmin:5.2.1
+FROM phpmyadmin/phpmyadmin:5.2.3
 
 COPY --from=lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
 
