@@ -33,6 +33,14 @@ resource "aws_lambda_function" "phpmyadmin" {
   image_uri     = var.image_uri
   role          = aws_iam_role.lambda.arn
 
+  # Ensure IAM policy attachments are complete before the function is created
+  # or updated; without this, AWS may reject the apply with an error such as
+  # "execution role does not have permissions to call CreateNetworkInterface".
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_basic,
+    aws_iam_role_policy_attachment.lambda_vpc,
+  ]
+
   # phpMyAdmin can be slow to initialize; allow enough time per request
   timeout     = 30
   memory_size = 512
