@@ -46,9 +46,26 @@ resource "aws_lambda_function" "phpmyadmin" {
     }
   }
 
-  # To place the Lambda function inside a VPC, set subnet_ids and
-  # security_group_ids.  Leave them empty (the default) to deploy
-  # the function without VPC attachment.
+  # --- VPC placement ---
+  # Lambda Function URL (and CloudFront in front of it) provides internet-facing
+  # access to this function regardless of VPC placement.  Placing the function
+  # inside a VPC only affects *outbound* network connectivity from the function:
+  #
+  #   Non-VPC (default)
+  #     Internet → Function URL → Lambda → (no access to private VPC resources)
+  #
+  #   VPC placement (subnet_ids set)
+  #     Internet → Function URL → Lambda → private RDS / Aurora in the same VPC  ✓
+  #     Lambda → Internet (outbound)  ✗  blocked unless a NAT Gateway is present
+  #
+  # If the Lambda needs outbound internet access while inside a VPC (e.g. for
+  # phpMyAdmin to reach an external host), attach a NAT Gateway to the VPC:
+  #   1. Create a public subnet with an Internet Gateway route.
+  #   2. Place a NAT Gateway in that public subnet.
+  #   3. Add a default route (0.0.0.0/0 → NAT Gateway) to the private subnet
+  #      route tables used by subnet_ids below.
+  #
+  # Leave subnet_ids empty (default) to keep the non-VPC deployment pattern.
   dynamic "vpc_config" {
     for_each = length(var.subnet_ids) > 0 ? [1] : []
     content {
