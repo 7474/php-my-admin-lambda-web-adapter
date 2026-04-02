@@ -31,7 +31,7 @@ CloudFront (CDN) → Lambda Function URL → Lambda (phpMyAdmin + Lambda Web Ada
   - [`config.user.inc.php`](src/config.user.inc.php) - phpMyAdmin SSL設定
   - [`docker-entrypoint-with-basic-auth.sh`](src/docker-entrypoint-with-basic-auth.sh) - エントリポイントスクリプト
   - [`docker-compose.yml`](src/docker-compose.yml) - ローカル開発用 docker-compose
-- [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) - ECR Public へのイメージ Push ワークフロー
+- [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) - ECR Public / GHCR へのイメージ Push ワークフロー
 - [`ecr-terraform/`](ecr-terraform/) - ECR Public リポジトリと GitHub Actions OIDC ロールの Terraform
 - [`example-terraform/`](example-terraform/) - Lambda + CloudFront デプロイ例の Terraform
 
@@ -60,11 +60,34 @@ terraform apply
 
 ### 4. Lambda へのデプロイ
 
+AWS Lambda は **ECR Public** のイメージと **ECR pull through cache** のイメージを直接実行できません。  
+`public.ecr.aws/...` や `xxxxxxxxxxxx.dkr.ecr.<region>.amazonaws.com/ecr-public/...` を `image_uri` に指定すると、以下のようなエラーになることがあります。
+
+```text
+InvalidParameterValueException: The image manifest, config or layer media type for the source image is not supported.
+```
+
+そのため、Lambda と **同じリージョンの private ECR** にイメージをコピーして、その URI を `image_uri` に指定してください。
+
+```bash
+aws ecr create-repository \
+  --region ap-northeast-1 \
+  --repository-name phpmyadmin-lambda-adapter
+
+aws ecr get-login-password --region ap-northeast-1 \
+  | docker login --username AWS --password-stdin <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com
+
+docker pull public.ecr.aws/<alias>/phpmyadmin-lambda-adapter:latest
+docker tag public.ecr.aws/<alias>/phpmyadmin-lambda-adapter:latest \
+  <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest
+docker push <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest
+```
+
 ```bash
 cd example-terraform
 terraform init
 terraform apply \
-  -var="image_uri=public.ecr.aws/<alias>/phpmyadmin-lambda-adapter:latest" \
+  -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest" \
   -var="basic_auth_password=<password>"
 ```
 
