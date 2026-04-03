@@ -33,10 +33,12 @@ RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
 # Use numeric UID/GID for Apache's worker process instead of the name "www-data".
 # In some Lambda execution environments getpwnam("www-data") returns NULL, which
 # causes Apache to abort with AH00543 ("bad user name www-data").
-RUN sed -i 's/APACHE_RUN_USER=.*/APACHE_RUN_USER=#33/' /etc/apache2/envvars \
-    && sed -i 's/APACHE_RUN_GROUP=.*/APACHE_RUN_GROUP=#33/' /etc/apache2/envvars \
-    && grep -q 'APACHE_RUN_USER=#33' /etc/apache2/envvars \
-    && grep -q 'APACHE_RUN_GROUP=#33' /etc/apache2/envvars
+RUN grep -q 'APACHE_RUN_USER=www-data' /etc/apache2/envvars \
+    && grep -q 'APACHE_RUN_GROUP=www-data' /etc/apache2/envvars \
+    && sed -i 's/APACHE_RUN_USER=www-data/APACHE_RUN_USER=#33/' /etc/apache2/envvars \
+    && sed -i 's/APACHE_RUN_GROUP=www-data/APACHE_RUN_GROUP=#33/' /etc/apache2/envvars \
+    && ! grep -q 'APACHE_RUN_USER=www-data' /etc/apache2/envvars \
+    && ! grep -q 'APACHE_RUN_GROUP=www-data' /etc/apache2/envvars
 
 # Apache no longer needs the www-data name for its own privilege drop because it
 # now runs as numeric UID/GID 33. Keep the passwd/group entries anyway for
