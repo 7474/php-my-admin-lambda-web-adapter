@@ -25,7 +25,7 @@ resource "aws_cloudfront_distribution" "phpmyadmin" {
   ]
 
   origin {
-    domain_name              = trimprefix(trimprefix(aws_lambda_function_url.phpmyadmin.function_url, "https://"), "/")
+    domain_name              = trimsuffix(trimprefix(aws_lambda_function_url.phpmyadmin.function_url, "https://"), "/")
     origin_id                = "lambda"
     origin_access_control_id = aws_cloudfront_origin_access_control.lambda.id
 
