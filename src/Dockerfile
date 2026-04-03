@@ -36,7 +36,8 @@ RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
 # /etc/apache2/envvars uses `: ${APACHE_RUN_USER:=www-data}` (POSIX := expansion),
 # so pre-setting these environment variables takes precedence over the default.
 ENV APACHE_RUN_USER=#33 \
-    APACHE_RUN_GROUP=#33
+    APACHE_RUN_GROUP=#33 \
+    APACHE_PID_FILE=/tmp/apache2.pid
 
 # Apache no longer needs the www-data name for its own privilege drop because it
 # now runs as numeric UID/GID 33. Keep the passwd/group entries anyway for
