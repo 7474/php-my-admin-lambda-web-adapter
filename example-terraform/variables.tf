@@ -29,16 +29,6 @@ variable "image_uri" {
   }
 }
 
-variable "basic_auth_user" {
-  description = "Basic auth user name"
-  default     = "admin"
-}
-
-variable "basic_auth_password" {
-  description = "Basic auth password"
-  sensitive   = true
-}
-
 variable "pma_arbitrary" {
   description = "Allow connection to an arbitrary MySQL server (PMA_ARBITRARY=1)"
   default     = "1"

@@ -23,9 +23,6 @@ RUN grep -Fq 'chgrp www-data /etc/phpmyadmin/config.secret.inc.php' /docker-entr
     && sed -i '/chgrp www-data \/etc\/phpmyadmin\/config\.secret\.inc\.php/d' /docker-entrypoint.sh \
     && ! grep -Fq 'chgrp www-data /etc/phpmyadmin/config.secret.inc.php' /docker-entrypoint.sh
 
-COPY basic-auth.conf /etc/apache2/conf-available/basic-auth.conf
-RUN a2enconf basic-auth
-
 # Change Apache listening port from 80 to 8080 for Lambda Web Adapter
 RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
     && sed -i 's/<VirtualHost \*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-enabled/000-default.conf
@@ -74,11 +71,7 @@ RUN if ! getent group www-data > /dev/null; then \
         useradd --uid 33 --gid 33 --home-dir /var/www --shell /usr/sbin/nologin www-data; \
     fi
 
-COPY docker-entrypoint-with-basic-auth.sh /docker-entrypoint-with-basic-auth.sh
-RUN chmod +x /docker-entrypoint-with-basic-auth.sh
-
 ENV PORT=8080
 EXPOSE 8080
 
-ENTRYPOINT ["/docker-entrypoint-with-basic-auth.sh"]
 CMD ["apache2-foreground"]

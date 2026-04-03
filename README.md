@@ -4,13 +4,8 @@
 
 ## Usage
 
-ベースイメージの設定に加えて以下の環境変数を指定することでBASIC認証を設定できます。
-
-- `BACIC_AUTH_USER`
-- `BACIC_AUTH_PASSWORD`
-
-また `PMA_SSL` 環境変数に `1` を設定することでSSL/TLS設定を有効にしてサーバに接続するようになります。
-PlanetScaleなどのDBaaSに接続する際に設定します。
+`PMA_SSL` 環境変数に `1` を設定することで SSL/TLS 設定を有効にしてサーバに接続するようになります。
+PlanetScale などの DBaaS に接続する際に設定します。
 
 コンテナは **8080** ポートでリッスンします (Lambda Web Adapter のデフォルトポート)。
 
@@ -25,16 +20,35 @@ CloudFront (CDN) → Lambda Function URL → Lambda (phpMyAdmin + Lambda Web Ada
 
 ## Notes
 
-- Lambda Function URL 経由では、Apache が返す `WWW-Authenticate` ヘッダが `x-amzn-Remapped-www-authenticate` に変換されることがあり、ブラウザの BASIC 認証ダイアログが表示されない場合があります。
-- そのため `example-terraform` は、CloudFront を公開エンドポイントにし、Function URL を `AWS_IAM` 認証に設定して CloudFront (Origin Access Control の SigV4 署名) のみが到達できる構成を採用しています。
+### 認証について
+
+このテンプレートでは Lambda 側に基本認証機能を実装していません。理由は以下の通りです：
+
+- **Lambda Function URL のヘッダ変換**: Lambda Function URL 経由で返される `WWW-Authenticate` ヘッダが `x-amzn-Remapped-www-authenticate` に変換され、ブラウザの Basic 認証ダイアログが表示されないためです。
+- **Lambda 側での認証は無効**: Apache で Basic 認証を設定しても、ブラウザが認証を要求できず、ユーザーは認証なしで (401 エラーで) ブロックされるだけになります。
+
+基本認証やアクセス制限が必要な場合は、以下の代替手段を推奨します：
+
+1. **CloudFront Functions**（推奨）
+   - CloudFront フロントで Basic 認証を実装
+   - `WWW-Authenticate` ヘッダをクライアントに返すことで、ブラウザのダイアログが正常に動作
+   - サーバレス、低レイテンシ
+
+2. **AWS WAF**
+   - CloudFront に紐付けて IP ホワイトリストや地域制限、レート制限などを適用
+
+3. **Amazon Cognito**
+   - OAuth 2.0 / OpenID Connect による認証
+   - CloudFront + Lambda@Edge や ALB と組み合わせて実装
+
+4. **IAM 認証（現在の構成）**
+   - CloudFront の Origin Access Control (OAC) + Lambda Function URL の `AWS_IAM` 認証で、プログラマティックアクセスを保護
 
 ## Directory Structure
 
 - [`src/`](src/) - コンテナイメージのソース
   - [`Dockerfile`](src/Dockerfile) - Lambda Web Adapter を組み込んだ phpMyAdmin イメージ
-  - [`basic-auth.conf`](src/basic-auth.conf) - Apache BASIC認証設定
   - [`config.user.inc.php`](src/config.user.inc.php) - phpMyAdmin SSL設定
-  - [`docker-entrypoint-with-basic-auth.sh`](src/docker-entrypoint-with-basic-auth.sh) - エントリポイントスクリプト
   - [`docker-compose.yml`](src/docker-compose.yml) - ローカル開発用 docker-compose
 - [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) - ECR Private / GHCR へのイメージ Push ワークフロー
 - [`ecr-terraform/`](ecr-terraform/) - ECR Private リポジトリと GitHub Actions OIDC ロールの Terraform
@@ -83,8 +97,7 @@ cd example-terraform
 terraform init
 terraform apply \
   -var="region=ap-northeast-1" \
-  -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest" \
-  -var="basic_auth_password=<password>"
+  -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest"
 ```
 
 ## Example
