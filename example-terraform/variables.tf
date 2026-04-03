@@ -43,11 +43,6 @@ variable "subnet_ids" {
   description = "List of subnet IDs to place the Lambda function in (leave empty to deploy outside VPC)"
   type        = list(string)
   default     = []
-
-  validation {
-    condition     = (length(var.subnet_ids) == 0 && length(var.security_group_ids) == 0) || (length(var.subnet_ids) > 0 && length(var.security_group_ids) > 0)
-    error_message = "subnet_ids and security_group_ids must either both be empty (no VPC) or both be non-empty (VPC deployment)."
-  }
 }
 
 variable "security_group_ids" {

@@ -23,6 +23,11 @@ CloudFront (CDN) → Lambda Function URL → Lambda (phpMyAdmin + Lambda Web Ada
 - **Lambda Web Adapter**: Lambda 呼び出しを HTTP リクエストに変換してコンテナ内の Apache へ転送します。
 - **CloudFront**: CDN として Lambda Function URL の前段に配置します。
 
+## Notes
+
+- Lambda Function URL 経由では、Apache が返す `WWW-Authenticate` ヘッダが `x-amzn-Remapped-www-authenticate` に変換されることがあり、ブラウザの BASIC 認証ダイアログが表示されない場合があります。
+- そのため `example-terraform` は、CloudFront を公開エンドポイントにし、Function URL を `AWS_IAM` 認証に設定して CloudFront (Origin Access Control の SigV4 署名) のみが到達できる構成を採用しています。
+
 ## Directory Structure
 
 - [`src/`](src/) - コンテナイメージのソース
