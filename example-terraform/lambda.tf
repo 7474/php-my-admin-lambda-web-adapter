@@ -47,8 +47,11 @@ resource "aws_lambda_function" "phpmyadmin" {
 
   environment {
     variables = {
-      PMA_ARBITRARY = var.pma_arbitrary
-      PMA_SSL       = var.pma_ssl
+      PMA_ARBITRARY       = var.pma_arbitrary
+      PMA_SSL             = var.pma_ssl
+      # Used both by phpMyAdmin (blowfish_secret) and by the Cookie session handler
+      # to derive the AES-256 encryption key.  Keep this value secret.
+      PMA_BLOWFISH_SECRET = var.pma_blowfish_secret
     }
   }
 

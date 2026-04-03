@@ -3,6 +3,7 @@ services:
     build: .
     environment:
       PMA_ARBITRARY: 1
+      PMA_BLOWFISH_SECRET: your_secret_here
     ports:
       - "8080:8080"
 

@@ -45,3 +45,18 @@ variable "security_group_ids" {
     error_message = "subnet_ids and security_group_ids must either both be empty (no VPC) or both be non-empty (VPC deployment)."
   }
 }
+
+# ---------------------------------------------------------------------------
+# Security
+# ---------------------------------------------------------------------------
+
+variable "pma_blowfish_secret" {
+  description = "Secret key used to encrypt phpMyAdmin cookie-based sessions (PMA_BLOWFISH_SECRET). Must be 32 characters or longer. Treat as sensitive; pass via -var or a .tfvars file excluded from version control."
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(var.pma_blowfish_secret) >= 32
+    error_message = "pma_blowfish_secret must be at least 32 characters long."
+  }
+}

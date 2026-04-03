@@ -5,6 +5,7 @@ FROM phpmyadmin/phpmyadmin:5.2.3
 COPY --from=lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
 
 COPY config.user.inc.php /etc/phpmyadmin/config.user.inc.php
+COPY cookie-session-handler.php /etc/phpmyadmin/cookie-session-handler.php
 
 # Pre-create config.secret.inc.php so the phpmyadmin entrypoint never tries to
 # write it at runtime (Lambda's root filesystem is read-only; only /tmp is writable).
@@ -48,9 +49,13 @@ RUN if grep -Eq '^export APACHE_PID_FILE=' /etc/apache2/envvars; then \
 RUN echo 'ServerName localhost' > /etc/apache2/conf-available/servername.conf \
     && a2enconf servername
 
-# Redirect PHP session storage from /var/lib/php/sessions/ (read-only in Lambda)
-# to /tmp.
-RUN echo 'session.save_path = /tmp' > /usr/local/etc/php/conf.d/lambda-sessions.ini
+# Override PHP session settings. z- prefix ensures this ini loads after
+# phpmyadmin-misc.ini, overriding its SESSION_SAVE_PATH.
+# auto_prepend_file registers the cookie-based session handler before phpMyAdmin
+# calls session_start(), making sessions stateless across Lambda instances.
+# session.save_path is kept as a fallback when PMA_BLOWFISH_SECRET is not set.
+RUN printf 'session.save_path = /tmp\nauto_prepend_file = /etc/phpmyadmin/cookie-session-handler.php\n' \
+    > /usr/local/etc/php/conf.d/z-lambda-sessions.ini
 
 # Use numeric UID/GID for Apache's worker process instead of the name "www-data".
 # In some Lambda execution environments getpwnam("www-data") returns NULL, which
