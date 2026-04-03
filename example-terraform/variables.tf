@@ -19,16 +19,6 @@ variable "image_uri" {
   description = "Container image URI in a private ECR repository in the same region as Lambda (e.g. <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest)"
 }
 
-variable "basic_auth_user" {
-  description = "Basic auth user name"
-  default     = "admin"
-}
-
-variable "basic_auth_password" {
-  description = "Basic auth password"
-  sensitive   = true
-}
-
 variable "pma_arbitrary" {
   description = "Allow connection to an arbitrary MySQL server (PMA_ARBITRARY=1)"
   default     = "1"
