@@ -31,14 +31,19 @@ RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
     && sed -i 's/<VirtualHost \*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-enabled/000-default.conf
 
 # Redirect Apache runtime files to /tmp for Lambda's read-only root filesystem.
-# /etc/apache2/envvars exports APACHE_PID_FILE and APACHE_LOCK_DIR with plain
-# `export VAR=value` (not the `: ${VAR:=default}` guard used for APACHE_RUN_USER/
-# GROUP), so Docker ENV cannot override them.  Patch the file at build time.
-RUN grep -Eq '^export APACHE_PID_FILE=.*' /etc/apache2/envvars \
-    && sed -i 's|^export APACHE_PID_FILE=.*|export APACHE_PID_FILE=/tmp/apache2.pid|' /etc/apache2/envvars \
+# Base image variants may or may not predefine these variables in envvars.
+# Replace existing lines when present, otherwise append them.
+RUN if grep -Eq '^export APACHE_PID_FILE=' /etc/apache2/envvars; then \
+        sed -i 's|^export APACHE_PID_FILE=.*|export APACHE_PID_FILE=/tmp/apache2.pid|' /etc/apache2/envvars; \
+    else \
+        printf '\nexport APACHE_PID_FILE=/tmp/apache2.pid\n' >> /etc/apache2/envvars; \
+    fi \
+    && if grep -Eq '^export APACHE_LOCK_DIR=' /etc/apache2/envvars; then \
+        sed -i 's|^export APACHE_LOCK_DIR=.*|export APACHE_LOCK_DIR=/tmp/apache2-locks|' /etc/apache2/envvars; \
+    else \
+        printf 'export APACHE_LOCK_DIR=/tmp/apache2-locks\n' >> /etc/apache2/envvars; \
+    fi \
     && grep -Fxq 'export APACHE_PID_FILE=/tmp/apache2.pid' /etc/apache2/envvars \
-    && grep -Eq '^export APACHE_LOCK_DIR=.*' /etc/apache2/envvars \
-    && sed -i 's|^export APACHE_LOCK_DIR=.*|export APACHE_LOCK_DIR=/tmp/apache2-locks|' /etc/apache2/envvars \
     && grep -Fxq 'export APACHE_LOCK_DIR=/tmp/apache2-locks' /etc/apache2/envvars
 
 # Set a global ServerName to suppress the "Could not reliably determine the
