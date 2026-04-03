@@ -47,10 +47,8 @@ resource "aws_lambda_function" "phpmyadmin" {
 
   environment {
     variables = {
-      PMA_ARBITRARY       = var.pma_arbitrary
-      BACIC_AUTH_USER     = var.basic_auth_user
-      BACIC_AUTH_PASSWORD = var.basic_auth_password
-      PMA_SSL             = var.pma_ssl
+      PMA_ARBITRARY = var.pma_arbitrary
+      PMA_SSL       = var.pma_ssl
     }
   }
 
