@@ -34,8 +34,12 @@ RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
 # /etc/apache2/envvars exports APACHE_PID_FILE and APACHE_LOCK_DIR with plain
 # `export VAR=value` (not the `: ${VAR:=default}` guard used for APACHE_RUN_USER/
 # GROUP), so Docker ENV cannot override them.  Patch the file at build time.
-RUN sed -i 's|^export APACHE_PID_FILE=.*|export APACHE_PID_FILE=/tmp/apache2.pid|' /etc/apache2/envvars \
-    && sed -i 's|^export APACHE_LOCK_DIR=.*|export APACHE_LOCK_DIR=/tmp/apache2-locks|' /etc/apache2/envvars
+RUN grep -Eq '^export APACHE_PID_FILE=.*' /etc/apache2/envvars \
+    && sed -i 's|^export APACHE_PID_FILE=.*|export APACHE_PID_FILE=/tmp/apache2.pid|' /etc/apache2/envvars \
+    && grep -Fxq 'export APACHE_PID_FILE=/tmp/apache2.pid' /etc/apache2/envvars \
+    && grep -Eq '^export APACHE_LOCK_DIR=.*' /etc/apache2/envvars \
+    && sed -i 's|^export APACHE_LOCK_DIR=.*|export APACHE_LOCK_DIR=/tmp/apache2-locks|' /etc/apache2/envvars \
+    && grep -Fxq 'export APACHE_LOCK_DIR=/tmp/apache2-locks' /etc/apache2/envvars
 
 # Set a global ServerName to suppress the "Could not reliably determine the
 # server's fully qualified domain name" startup warning.
