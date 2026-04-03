@@ -30,14 +30,33 @@ RUN a2enconf basic-auth
 RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
     && sed -i 's/<VirtualHost \*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-enabled/000-default.conf
 
+# Redirect Apache runtime files to /tmp for Lambda's read-only root filesystem.
+# /etc/apache2/envvars exports APACHE_PID_FILE and APACHE_LOCK_DIR with plain
+# `export VAR=value` (not the `: ${VAR:=default}` guard used for APACHE_RUN_USER/
+# GROUP), so Docker ENV cannot override them.  Patch the file at build time.
+RUN grep -Eq '^export APACHE_PID_FILE=.*' /etc/apache2/envvars \
+    && sed -i 's|^export APACHE_PID_FILE=.*|export APACHE_PID_FILE=/tmp/apache2.pid|' /etc/apache2/envvars \
+    && grep -Fxq 'export APACHE_PID_FILE=/tmp/apache2.pid' /etc/apache2/envvars \
+    && grep -Eq '^export APACHE_LOCK_DIR=.*' /etc/apache2/envvars \
+    && sed -i 's|^export APACHE_LOCK_DIR=.*|export APACHE_LOCK_DIR=/tmp/apache2-locks|' /etc/apache2/envvars \
+    && grep -Fxq 'export APACHE_LOCK_DIR=/tmp/apache2-locks' /etc/apache2/envvars
+
+# Set a global ServerName to suppress the "Could not reliably determine the
+# server's fully qualified domain name" startup warning.
+RUN echo 'ServerName localhost' > /etc/apache2/conf-available/servername.conf \
+    && a2enconf servername
+
+# Redirect PHP session storage from /var/lib/php/sessions/ (read-only in Lambda)
+# to /tmp.
+RUN echo 'session.save_path = /tmp' > /usr/local/etc/php/conf.d/lambda-sessions.ini
+
 # Use numeric UID/GID for Apache's worker process instead of the name "www-data".
 # In some Lambda execution environments getpwnam("www-data") returns NULL, which
 # causes Apache to abort with AH00543 ("bad user name www-data").
 # /etc/apache2/envvars uses `: ${APACHE_RUN_USER:=www-data}` (POSIX := expansion),
 # so pre-setting these environment variables takes precedence over the default.
 ENV APACHE_RUN_USER=#33 \
-    APACHE_RUN_GROUP=#33 \
-    APACHE_PID_FILE=/tmp/apache2.pid
+    APACHE_RUN_GROUP=#33
 
 # Apache no longer needs the www-data name for its own privilege drop because it
 # now runs as numeric UID/GID 33. Keep the passwd/group entries anyway for
