@@ -20,7 +20,9 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            tag_suffix: -x86_64
+          #   tag_suffix: -x86_64
+          # - platform: linux/arm64
+          #   tag_suffix: -arm64
     permissions:
       contents: read
       packages: write
