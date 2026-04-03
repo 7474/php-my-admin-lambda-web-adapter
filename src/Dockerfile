@@ -19,9 +19,9 @@ RUN printf '<?php\n$env = getenv("PMA_BLOWFISH_SECRET");\nif ($env !== false && 
 # unconditionally at runtime.  Lambda's root filesystem is read-only, so that
 # call always fails.  Remove the line from the entrypoint at build time; the
 # file already has the correct group from the chown above.
-RUN grep -Fqx 'chgrp www-data /etc/phpmyadmin/config.secret.inc.php' /docker-entrypoint.sh \
+RUN grep -Fq 'chgrp www-data /etc/phpmyadmin/config.secret.inc.php' /docker-entrypoint.sh \
     && sed -i '/chgrp www-data \/etc\/phpmyadmin\/config\.secret\.inc\.php/d' /docker-entrypoint.sh \
-    && ! grep -Fqx 'chgrp www-data /etc/phpmyadmin/config.secret.inc.php' /docker-entrypoint.sh
+    && ! grep -Fq 'chgrp www-data /etc/phpmyadmin/config.secret.inc.php' /docker-entrypoint.sh
 
 COPY basic-auth.conf /etc/apache2/conf-available/basic-auth.conf
 RUN a2enconf basic-auth
