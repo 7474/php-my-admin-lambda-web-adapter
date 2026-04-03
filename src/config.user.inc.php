@@ -6,3 +6,7 @@ if ($_ENV['PMA_SSL']) {
         $cfg['Servers'][$i]['ssl'] = true;
     }
 }
+
+// Redirect phpMyAdmin's temp directory to /tmp (Lambda's root filesystem is
+// read-only; the default /var/www/html/tmp/ is not writable at runtime).
+$cfg['TempDir'] = '/tmp/phpmyadmin';
