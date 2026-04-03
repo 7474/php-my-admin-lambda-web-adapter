@@ -3,8 +3,7 @@ locals {
 }
 
 provider "aws" {
-  # ECR Public is only available in us-east-1
-  region     = "us-east-1"
+  region     = var.region
   access_key = var.access_key
   secret_key = var.secret_key
 
@@ -15,19 +14,10 @@ provider "aws" {
   }
 }
 
-module "public_ecr" {
+module "private_ecr" {
   source = "terraform-aws-modules/ecr/aws"
 
   repository_name = local.name
-  repository_type = "public"
-
-  public_repository_catalog_data = {
-    description       = "Docker container for phpMyAdmin running on AWS Lambda via Lambda Web Adapter."
-    about_text        = "See. https://github.com/7474/php-my-admin-lambda-web-adapter"
-    usage_text        = "See. https://github.com/7474/php-my-admin-lambda-web-adapter"
-    operating_systems = ["Linux"]
-    architectures     = ["x86"]
-  }
 }
 
 data "aws_iam_openid_connect_provider" "github" {
@@ -71,10 +61,19 @@ data "aws_iam_policy_document" "github_actions_ecr_push" {
     sid    = "AllowPushImage"
     effect = "Allow"
     actions = [
-      "ecr-public:*"
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:BatchGetImage",
+      "ecr:CompleteLayerUpload",
+      "ecr:DescribeImages",
+      "ecr:DescribeRepositories",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:InitiateLayerUpload",
+      "ecr:ListImages",
+      "ecr:PutImage",
+      "ecr:UploadLayerPart"
     ]
     resources = [
-      module.public_ecr.repository_arn
+      module.private_ecr.repository_arn
     ]
   }
 
@@ -82,15 +81,14 @@ data "aws_iam_policy_document" "github_actions_ecr_push" {
     sid    = "AllowLoginToECR"
     effect = "Allow"
     actions = [
-      "ecr-public:GetAuthorizationToken",
-      "sts:GetServiceBearerToken"
+      "ecr:GetAuthorizationToken"
     ]
     resources = ["*"]
   }
 }
 
 output "repository_uri" {
-  value = module.public_ecr.repository_url
+  value = module.private_ecr.repository_url
 }
 
 output "github_actions_role_arn" {
