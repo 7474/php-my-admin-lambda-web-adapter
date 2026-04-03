@@ -25,10 +25,10 @@ RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
 # Ensure the www-data user and group entries exist so Apache can drop privileges
 # correctly, even in environments where name lookups may be unusual (e.g. Lambda).
 RUN if ! getent group www-data > /dev/null; then \
-        echo 'www-data:x:33:' >> /etc/group; \
+        groupadd --gid 33 www-data; \
     fi \
     && if ! getent passwd www-data > /dev/null; then \
-        echo 'www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin' >> /etc/passwd; \
+        useradd --uid 33 --gid 33 --home-dir /var/www --shell /usr/sbin/nologin www-data; \
     fi
 
 COPY docker-entrypoint-with-basic-auth.sh /docker-entrypoint-with-basic-auth.sh
