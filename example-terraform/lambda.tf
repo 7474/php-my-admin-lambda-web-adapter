@@ -85,14 +85,30 @@ resource "aws_lambda_function" "phpmyadmin" {
 
 resource "aws_lambda_function_url" "phpmyadmin" {
   function_name      = aws_lambda_function.phpmyadmin.function_name
-  authorization_type = "NONE"
+  authorization_type = "AWS_IAM"
+}
 
-  cors {
-    allow_origins = ["*"]
-    allow_methods = ["*"]
-    allow_headers = ["*"]
-    max_age       = 0
-  }
+data "aws_caller_identity" "current" {}
+
+# Allow CloudFront (signed by Origin Access Control) to invoke this Function URL.
+resource "aws_lambda_permission" "allow_cloudfront_function_url" {
+  statement_id           = "AllowCloudFrontFunctionUrlInvoke"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.phpmyadmin.function_name
+  principal              = "cloudfront.amazonaws.com"
+  function_url_auth_type = "AWS_IAM"
+  source_arn             = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
+}
+
+# Some AWS clients additionally require lambda:InvokeFunction with
+# invoked_via_function_url=true when using Function URL + AWS_IAM.
+resource "aws_lambda_permission" "allow_cloudfront_invoke_function" {
+  statement_id             = "AllowCloudFrontInvokeFunctionViaUrl"
+  action                   = "lambda:InvokeFunction"
+  function_name            = aws_lambda_function.phpmyadmin.function_name
+  principal                = "cloudfront.amazonaws.com"
+  source_arn               = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
+  invoked_via_function_url = true
 }
 
 output "lambda_function_url" {
