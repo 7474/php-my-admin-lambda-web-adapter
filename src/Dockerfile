@@ -15,12 +15,24 @@ RUN printf '<?php\n$env = getenv("PMA_BLOWFISH_SECRET");\nif ($env !== false && 
     && chown root:www-data /etc/phpmyadmin/config.secret.inc.php \
     && chmod 640 /etc/phpmyadmin/config.secret.inc.php
 
+# The phpmyadmin entrypoint calls `chgrp www-data` on config.secret.inc.php
+# unconditionally at runtime.  Lambda's root filesystem is read-only, so that
+# call always fails.  Remove the line from the entrypoint at build time; the
+# file already has the correct group from the chown above.
+RUN sed -i '/chgrp www-data \/etc\/phpmyadmin\/config\.secret\.inc\.php/d' /docker-entrypoint.sh
+
 COPY basic-auth.conf /etc/apache2/conf-available/basic-auth.conf
 RUN a2enconf basic-auth
 
 # Change Apache listening port from 80 to 8080 for Lambda Web Adapter
 RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
     && sed -i 's/<VirtualHost \*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-enabled/000-default.conf
+
+# Use numeric UID/GID for Apache's worker process instead of the name "www-data".
+# In some Lambda execution environments getpwnam("www-data") returns NULL, which
+# causes Apache to abort with AH00543 ("bad user name www-data").
+RUN sed -i 's/APACHE_RUN_USER=www-data/APACHE_RUN_USER=#33/' /etc/apache2/envvars \
+    && sed -i 's/APACHE_RUN_GROUP=www-data/APACHE_RUN_GROUP=#33/' /etc/apache2/envvars
 
 # Ensure the www-data user and group entries exist so Apache can drop privileges
 # correctly, even in environments where name lookups may be unusual (e.g. Lambda).
