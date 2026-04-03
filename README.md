@@ -181,6 +181,23 @@ terraform apply \
   -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest"
 ```
 
+### セキュアな設定例
+
+`pma_blowfish_secret` を必ず設定してください。Cookie セッションの AES-256 暗号化キーに使用されます。
+
+```bash
+terraform apply \
+  -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest" \
+  -var='pma_blowfish_secret=<32文字以上のランダム文字列>'
+```
+
+> **推奨**: `pma_blowfish_secret` はバージョン管理から除外した `terraform.tfvars` または AWS Secrets Manager / SSM Parameter Store (SecureString) で管理してください。
+
+```hcl
+# terraform.tfvars (.gitignore に追加してバージョン管理対象外にすること)
+pma_blowfish_secret = "your-random-32-char-secret-here!!"
+```
+
 ## Example
 
 - [`src/docker-compose.yml`](src/docker-compose.yml): ローカル開発用 docker-compose の例
