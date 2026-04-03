@@ -44,6 +44,78 @@ CloudFront (CDN) → Lambda Function URL → Lambda (phpMyAdmin + Lambda Web Ada
 4. **IAM 認証（現在の構成）**
    - CloudFront の Origin Access Control (OAC) + Lambda Function URL の `AWS_IAM` 認証で、プログラマティックアクセスを保護
 
+### セッションについて
+
+Lambda はステートレスな実行環境であるため、通常の PHP ファイルセッションは以下の問題を抱えています。
+
+| 問題 | 説明 |
+|------|------|
+| コールドスタート | 新しいコンテナインスタンスが起動するたびに `/tmp` のセッションファイルが失われる |
+| 複数インスタンス | 同時リクエストが別インスタンスで処理されると、互いのセッションを参照できない |
+
+この構成では **Cookie ベースのセッションハンドラー** ([`src/cookie-session-handler.php`](src/cookie-session-handler.php)) を実装しており、これらの問題を解決します。
+
+#### 仕組み
+
+セッションデータをサーバ側ではなくブラウザのクッキーに保存します。
+
+```
+ログイン → session_write → AES-256-CBC 暗号化 + HMAC-SHA256 署名 → Cookie に保存
+次リクエスト → Cookie 取得 → HMAC 検証 → 復号 → session_read → phpMyAdmin に渡す
+```
+
+#### セキュリティ仕様
+
+| 項目 | 仕様 |
+|------|------|
+| 暗号化 | AES-256-CBC |
+| 鍵導出 | `SHA-256(PMA_BLOWFISH_SECRET)` → 32 バイト固定長 |
+| 整合性 | HMAC-SHA256（Encrypt-then-MAC） |
+| Cookie 属性 | `HttpOnly`, `SameSite=Strict`, HTTPS 時 `Secure` |
+| HTTPS 判定 | `$_SERVER['HTTPS']` および `X-Forwarded-Proto: https`（CloudFront）に対応 |
+| クッキー名 | `PMA_SESS` |
+
+> **注意**: セッションデータはクッキーに保存されるため、セッションサイズが 4 KB 以内に収まる必要があります。phpMyAdmin の通常利用では問題ありません。
+
+#### 環境変数
+
+| 変数 | 必須 | 説明 |
+|------|------|------|
+| `PMA_BLOWFISH_SECRET` | ○ | 暗号化キーとして使用。32 文字以上のランダム文字列を推奨 |
+
+`PMA_BLOWFISH_SECRET` が未設定の場合、Cookie セッションハンドラーは登録されず、`/tmp` へのファイルセッションにフォールバックします（インスタンスローカルなステートフルセッション）。
+
+#### 設定例
+
+**docker-compose（ローカル開発）**
+
+```yaml
+services:
+  phpmyadmin:
+    build: .
+    environment:
+      PMA_ARBITRARY: 1
+      PMA_BLOWFISH_SECRET: "your-random-32-char-secret-here!!"
+    ports:
+      - "8080:8080"
+```
+
+**Terraform（Lambda 環境変数）**
+
+```hcl
+resource "aws_lambda_function" "phpmyadmin" {
+  # ...
+  environment {
+    variables = {
+      PMA_ARBITRARY       = "1"
+      PMA_BLOWFISH_SECRET = var.pma_blowfish_secret  # AWS Secrets Manager などから取得
+    }
+  }
+}
+```
+
+`PMA_BLOWFISH_SECRET` は AWS Secrets Manager または SSM Parameter Store（SecureString）で管理し、Terraform `var` や Lambda の環境変数として注入することを推奨します。
+
 ## Directory Structure
 
 - [`src/`](src/) - コンテナイメージのソース
