@@ -103,6 +103,11 @@ class CookieSessionHandler implements SessionHandlerInterface
             'samesite' => 'Strict',
         ]);
 
+        // Keep $_COOKIE in sync so that read() works correctly if the session
+        // is closed and re-opened within the same request (e.g. phpMyAdmin's
+        // session round-trip test in Session::setUp).
+        $_COOKIE[self::COOKIE_NAME] = $payload;
+
         return true;
     }
 
@@ -114,6 +119,7 @@ class CookieSessionHandler implements SessionHandlerInterface
             'httponly' => true,
             'samesite' => 'Strict',
         ]);
+        unset($_COOKIE[self::COOKIE_NAME]);
         return true;
     }
 }
