@@ -15,6 +15,20 @@
  * filesystem path configured by session.save_path.
  */
 
+// Defense in depth for direct Function URL access: when a secret is configured,
+// reject requests that do not carry the exact X-Origin-Verify header value.
+$_originVerifySecret = getenv('CLOUDFRONT_ORIGIN_SECRET') ?: '';
+if (PHP_SAPI !== 'cli' && $_originVerifySecret !== '') {
+    $providedOriginVerify = $_SERVER['HTTP_X_ORIGIN_VERIFY'] ?? '';
+    if (!hash_equals($_originVerifySecret, $providedOriginVerify)) {
+        http_response_code(403);
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo "Forbidden\n";
+        exit;
+    }
+}
+unset($_originVerifySecret, $providedOriginVerify);
+
 class CookieSessionHandler implements SessionHandlerInterface
 {
     private const CIPHER      = 'aes-256-cbc';
