@@ -7,22 +7,20 @@ COPY --from=lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
 COPY config.user.inc.php /etc/phpmyadmin/config.user.inc.php
 COPY cookie-session-handler.php /etc/phpmyadmin/cookie-session-handler.php
 
-# Pre-create config.secret.inc.php so the phpmyadmin entrypoint never tries to
-# write it at runtime (Lambda's root filesystem is read-only; only /tmp is writable).
+# Replace the upstream entrypoint with our own copy that omits the unconditional
+# `chgrp www-data /etc/phpmyadmin/config.secret.inc.php` call.  Lambda mounts
+# image layers as a read-only filesystem, so that chgrp always fails at runtime.
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Pre-create config.secret.inc.php so our entrypoint's `if [ ! -f ... ]` guard
+# skips the creation step (which would also fail on Lambda's read-only filesystem).
 # The blowfish secret is read from the PMA_BLOWFISH_SECRET environment variable at
 # runtime so it can be rotated without rebuilding the image.
 RUN printf '<?php\n$env = getenv("PMA_BLOWFISH_SECRET");\nif ($env !== false && $env !== "") {\n    $cfg["blowfish_secret"] = $env;\n}\n' \
     > /etc/phpmyadmin/config.secret.inc.php \
     && chown root:www-data /etc/phpmyadmin/config.secret.inc.php \
     && chmod 640 /etc/phpmyadmin/config.secret.inc.php
-
-# The phpmyadmin entrypoint calls `chgrp www-data` on config.secret.inc.php
-# unconditionally at runtime.  Lambda's root filesystem is read-only, so that
-# call always fails.  Remove the line from the entrypoint at build time; the
-# file already has the correct group from the chown above.
-RUN grep -Fq 'chgrp www-data /etc/phpmyadmin/config.secret.inc.php' /docker-entrypoint.sh \
-    && sed -i '/chgrp www-data \/etc\/phpmyadmin\/config\.secret\.inc\.php/d' /docker-entrypoint.sh \
-    && ! grep -Fq 'chgrp www-data /etc/phpmyadmin/config.secret.inc.php' /docker-entrypoint.sh
 
 # Change Apache listening port from 80 to 8080 for Lambda Web Adapter
 RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
