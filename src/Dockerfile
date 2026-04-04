@@ -21,11 +21,14 @@ RUN chmod +x /docker-entrypoint.sh
 # skips the creation step (which would also fail on Lambda's read-only filesystem).
 # The blowfish secret is read from the PMA_BLOWFISH_SECRET environment variable at
 # runtime so it can be rotated without rebuilding the image.
-# Permissions: 640 (owner read/write, group read) so www-data can read it.
+# Permissions: 644 (world readable). Lambda may execute the container under a
+# runtime UID/GID that is not in www-data, so group-only readability is brittle.
+# This file contains only logic that reads PMA_BLOWFISH_SECRET from env at
+# runtime; it does not embed any static secret value.
 RUN printf '<?php\n$env = getenv("PMA_BLOWFISH_SECRET");\nif ($env !== false && $env !== "") {\n    $cfg["blowfish_secret"] = $env;\n}\n' \
     > /etc/phpmyadmin/config.secret.inc.php \
     && chown root:www-data /etc/phpmyadmin/config.secret.inc.php \
-    && chmod 640 /etc/phpmyadmin/config.secret.inc.php
+    && chmod 644 /etc/phpmyadmin/config.secret.inc.php
 
 # Change Apache listening port from 80 to 8080 for Lambda Web Adapter
 RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
