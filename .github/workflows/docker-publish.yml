@@ -54,13 +54,14 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6
         with:
-          aws-region: us-east-1
-          role-to-assume: arn:aws:iam::854403262515:role/phpmyadmin-lambda-adapter-github-actions
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           role-session-name: php-my-admin-lambda-web-adapter
 
-      - name: Login to Amazon ECR Public
+      - name: Login to Amazon ECR
         if: github.event_name != 'pull_request'
-        run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@f2e9fc6c2b355c1890b65e6f6f0e2ac3e6e22f78 # v2
 
       # Extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action
@@ -70,7 +71,7 @@ jobs:
         with:
           images: |
             ghcr.io/${{ github.repository }}
-            public.ecr.aws/g2g6t4l2/phpmyadmin-lambda-adapter
+            ${{ vars.ECR_REPOSITORY_URI }}
 
       - name: Prepare architecture specific tags
         id: arch-tags

@@ -158,18 +158,18 @@ resource "aws_lambda_function" "phpmyadmin" {
   - [`Dockerfile`](src/Dockerfile) - Lambda Web Adapter を組み込んだ phpMyAdmin イメージ
   - [`config.user.inc.php`](src/config.user.inc.php) - phpMyAdmin SSL設定
   - [`docker-compose.yml`](src/docker-compose.yml) - ローカル開発用 docker-compose
-- [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) - ECR Public / GHCR へのイメージ Push ワークフロー
-- [`ecr-terraform/`](ecr-terraform/) - ECR Public リポジトリと GitHub Actions OIDC ロールの Terraform
+- [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) - ECR Private / GHCR へのイメージ Push ワークフロー
+- [`ecr-terraform/`](ecr-terraform/) - ECR Private リポジトリと GitHub Actions OIDC ロールの Terraform
 - [`example-terraform/`](example-terraform/) - Lambda + CloudFront デプロイ例の Terraform
 
 ## Setup
 
-### 1. ECR Public リポジトリの作成
+### 1. ECR Private リポジトリの作成
 
 ```bash
 cd ecr-terraform
 terraform init
-terraform apply
+terraform apply -var="region=ap-northeast-1"
 ```
 
 `github_actions_role_arn` と `repository_uri` の出力値を控えておきます。
@@ -179,11 +179,15 @@ terraform apply
 | Secret | 説明 |
 |--------|------|
 | `AWS_ROLE_ARN` | ecr-terraform で作成した GitHub Actions IAM ロール ARN |
-| `ECR_PUBLIC_ALIAS` | ECR Public エイリアス (例: `g2g6t4l2`) |
+
+| Variable | 説明 |
+|----------|------|
+| `AWS_REGION` | ECR Private を作成したリージョン (例: `ap-northeast-1`) |
+| `ECR_REPOSITORY_URI` | ecr-terraform の `repository_uri` 出力値 |
 
 ### 3. イメージの Push
 
-`main` ブランチへの push または `v*.*.*` タグの作成で自動的にイメージが ECR Public と GHCR へ Push されます。
+`main` ブランチへの push または `v*.*.*` タグの作成で自動的にイメージが ECR Private と GHCR へ Push されます。
 
 ### 4. Lambda へのデプロイ
 
@@ -194,26 +198,13 @@ AWS Lambda は **ECR Public** のイメージと **ECR pull through cache** の�
 InvalidParameterValueException: The image manifest, config or layer media type for the source image is not supported.
 ```
 
-そのため、Lambda と **同じリージョンの private ECR** にイメージをコピーして、その URI を `image_uri` に指定してください。
-
-```bash
-aws ecr create-repository \
-  --region ap-northeast-1 \
-  --repository-name phpmyadmin-lambda-adapter
-
-aws ecr get-login-password --region ap-northeast-1 \
-  | docker login --username AWS --password-stdin <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com
-
-docker pull public.ecr.aws/<alias>/phpmyadmin-lambda-adapter:latest
-docker tag public.ecr.aws/<alias>/phpmyadmin-lambda-adapter:latest \
-  <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest
-docker push <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest
-```
+そのため、このリポジトリでは最初から Lambda と **同じリージョンの private ECR** に Push する構成にしています。`ecr-terraform` の `region` を Lambda のリージョンに合わせ、ワークフローでその `repository_uri` へ Push してください。
 
 ```bash
 cd example-terraform
 terraform init
 terraform apply \
+  -var="region=ap-northeast-1" \
   -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest"
 ```
 
