@@ -29,6 +29,18 @@ resource "aws_cloudfront_distribution" "phpmyadmin" {
     origin_id                = "lambda"
     origin_access_control_id = aws_cloudfront_origin_access_control.lambda.id
 
+    # Tell OAC to sign with UNSIGNED-PAYLOAD so Lambda Function URL does not
+    # validate the request body hash.  Without this, CloudFront hashes the POST
+    # body at signing time but Lambda receives it via chunked transfer encoding;
+    # the hashes never match and every POST returns 403.
+    # Lambda Function URLs (authorization_type = "AWS_IAM") honour the standard
+    # SigV4 unsigned-payload convention just like S3 does for certain operations.
+    # See: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html
+    custom_header {
+      name  = "x-amz-content-sha256"
+      value = "UNSIGNED-PAYLOAD"
+    }
+
     custom_origin_config {
       http_port              = 80
       https_port             = 443
