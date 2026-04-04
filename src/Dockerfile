@@ -4,6 +4,7 @@ FROM phpmyadmin/phpmyadmin:5.2.3
 
 COPY --from=lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
 
+# Ensure config.user.inc.php is readable by www-data. Permissions: 644 (world readable).
 COPY config.user.inc.php /etc/phpmyadmin/config.user.inc.php
 RUN chmod 644 /etc/phpmyadmin/config.user.inc.php
 COPY cookie-session-handler.php /etc/phpmyadmin/cookie-session-handler.php
@@ -23,9 +24,6 @@ RUN printf '<?php\n$env = getenv("PMA_BLOWFISH_SECRET");\nif ($env !== false && 
     > /etc/phpmyadmin/config.secret.inc.php \
     && chown root:www-data /etc/phpmyadmin/config.secret.inc.php \
     && chmod 640 /etc/phpmyadmin/config.secret.inc.php
-
-# Ensure config.user.inc.php is readable by www-data. Permissions: 644 (world readable).
-RUN chmod 644 /etc/phpmyadmin/config.user.inc.php
 
 # Change Apache listening port from 80 to 8080 for Lambda Web Adapter
 RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
