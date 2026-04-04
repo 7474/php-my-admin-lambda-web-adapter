@@ -5,6 +5,7 @@ FROM phpmyadmin/phpmyadmin:5.2.3
 COPY --from=lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
 
 COPY config.user.inc.php /etc/phpmyadmin/config.user.inc.php
+RUN chmod 644 /etc/phpmyadmin/config.user.inc.php
 COPY cookie-session-handler.php /etc/phpmyadmin/cookie-session-handler.php
 
 # Replace the upstream entrypoint with our own copy that omits the unconditional
@@ -17,10 +18,14 @@ RUN chmod +x /docker-entrypoint.sh
 # skips the creation step (which would also fail on Lambda's read-only filesystem).
 # The blowfish secret is read from the PMA_BLOWFISH_SECRET environment variable at
 # runtime so it can be rotated without rebuilding the image.
+# Permissions: 640 (owner read/write, group read) so www-data can read it.
 RUN printf '<?php\n$env = getenv("PMA_BLOWFISH_SECRET");\nif ($env !== false && $env !== "") {\n    $cfg["blowfish_secret"] = $env;\n}\n' \
     > /etc/phpmyadmin/config.secret.inc.php \
     && chown root:www-data /etc/phpmyadmin/config.secret.inc.php \
     && chmod 640 /etc/phpmyadmin/config.secret.inc.php
+
+# Ensure config.user.inc.php is readable by www-data. Permissions: 644 (world readable).
+RUN chmod 644 /etc/phpmyadmin/config.user.inc.php
 
 # Change Apache listening port from 80 to 8080 for Lambda Web Adapter
 RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf \
