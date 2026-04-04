@@ -94,18 +94,15 @@ resource "aws_lambda_function_url" "phpmyadmin" {
   authorization_type = "NONE"
 }
 
-data "aws_caller_identity" "current" {}
-
-# Allow CloudFront to invoke this Function URL.  With authorization_type=NONE
-# the Lambda service itself does not enforce IAM auth, but this permission
-# still documents CloudFront as the intended caller.
+# With authorization_type=NONE the Function URL is publicly accessible.
+# Access restriction is enforced at the Apache layer via the X-Origin-Verify
+# header secret set by CloudFront as a custom origin header.
 resource "aws_lambda_permission" "allow_cloudfront_function_url" {
-  statement_id           = "AllowCloudFrontFunctionUrlInvoke"
+  statement_id           = "AllowPublicFunctionUrlInvoke"
   action                 = "lambda:InvokeFunctionUrl"
   function_name          = aws_lambda_function.phpmyadmin.function_name
-  principal              = "cloudfront.amazonaws.com"
+  principal              = "*"
   function_url_auth_type = "NONE"
-  source_arn             = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
 }
 
 output "lambda_function_url" {

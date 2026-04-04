@@ -20,7 +20,7 @@ CloudFront (CDN) → Lambda Function URL → Lambda (phpMyAdmin + Lambda Web Ada
 
 ## Notes
 
-3. **VPCアクセス（Lambda VPC 配置時）**
+1. **VPCアクセス（Lambda VPC 配置時）**
    - `subnet_ids` と `security_group_ids` を指定することで Lambda を VPC 内に配置し、プライベートサブネットの RDS / Aurora に接続できます。
 
 ### アクセス制御について
@@ -41,15 +41,17 @@ CloudFront → (X-Origin-Verify: <secret>) → Lambda Function URL → Apache �
 
 #### なぜ OAC（AWS_IAM）を使わないのか
 
-CloudFront OAC は SigV4 署名で POST ボディのハッシュを署名対象に含めます。  
-しかし CloudFront → Lambda Function URL 間の転送では Transfer-Encoding: chunked が使われるため、**CloudFront が署名したボディハッシュと Lambda が受信したボディハッシュが一致せず、POST リクエストが 403 エラーになります**。
+CloudFront OAC は SigV4 署名を付与しますが、**POST ボディのハッシュを計算しません**（`unsigned-payload` 扱い）。  
+一方、Lambda Function URL は受信したボディのハッシュを自ら計算して SigV4 署名を検証するため、**ボディハッシュが存在しない（unsigned-payload）署名を拒否し、POST リクエストが 403 エラーになります**。
+
+ボディハッシュを正しく含めた署名を生成するには Lambda@Edge など別途コンピューティングリソースが必要です。このテンプレートではそのコストを避けるためカスタムヘッダ方式を採用しています。
 
 | リクエスト | OAC（AWS_IAM）| カスタムヘッダ（NONE）|
 |---|---|---|
-| GET | ✅ 成功 | ✅ 成功 |
-| POST | ❌ SigV4 ボディハッシュ不一致 | ✅ 成功 |
+| GET | ✅ 成功（ボディなし） | ✅ 成功 |
+| POST | ❌ ボディハッシュ未計算（unsigned-payload）で署名検証失敗 | ✅ 成功 |
 
-> **注意**: OAC の `unsigned-payload` オプションを使えば AWS_IAM のまま POST も通過できますが、Terraform の `aws_cloudfront_origin_access_control` リソースは現時点でこのオプションをサポートしていません。AWS コンソールまたは CLI で手動設定が必要なため、このテンプレートではカスタムヘッダ方式を採用しています。
+> **参考**: [Restricting access to a Lambda function URL - Amazon CloudFront](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-lambda.html)
 
 ### 認証について
 
