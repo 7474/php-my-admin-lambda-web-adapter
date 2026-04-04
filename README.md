@@ -20,6 +20,39 @@ CloudFront (CDN) → Lambda Function URL → Lambda (phpMyAdmin + Lambda Web Ada
 
 ## Notes
 
+1. **VPCアクセス（Lambda VPC 配置時）**
+   - `subnet_ids` と `security_group_ids` を指定することで Lambda を VPC 内に配置し、プライベートサブネットの RDS / Aurora に接続できます。
+
+### アクセス制御について
+
+Lambda Function URL はパブリックに公開されています。直接アクセスを防ぐために、CloudFront とLambda の両側で多層防御を実装しています。
+
+#### 仕組み
+
+```
+CloudFront → (X-Origin-Verify: <secret>) → Lambda Function URL → Apache → phpMyAdmin
+                                                                  ↑
+                                              ヘッダが一致しない場合 403 を返す
+```
+
+1. CloudFront がオリジンへリクエストを転送する際に `X-Origin-Verify` ヘッダにシークレット値を付加します（`cloudfront_origin_secret` variable）。
+2. Lambda の Apache が `CLOUDFRONT_ORIGIN_SECRET` 環境変数と照合し、一致しない場合は HTTP 403 を返します。
+3. CloudFront は `X-Origin-Verify` ヘッダをビューアへは転送しないため、シークレット値が外部に漏れません。
+
+#### なぜ OAC（AWS_IAM）を使わないのか
+
+CloudFront OAC は SigV4 署名を付与しますが、**POST ボディのハッシュを計算しません**（`unsigned-payload` 扱い）。  
+一方、Lambda Function URL は受信したボディのハッシュを自ら計算して SigV4 署名を検証するため、**ボディハッシュが存在しない（unsigned-payload）署名を拒否し、POST リクエストが 403 エラーになります**。
+
+ボディハッシュを正しく含めた署名を生成するには Lambda@Edge など別途コンピューティングリソースが必要です。このテンプレートではそのコストを避けるためカスタムヘッダ方式を採用しています。
+
+| リクエスト | OAC（AWS_IAM）| カスタムヘッダ（NONE）|
+|---|---|---|
+| GET | ✅ 成功（ボディなし） | ✅ 成功 |
+| POST | ❌ ボディハッシュ未計算（unsigned-payload）で署名検証失敗 | ✅ 成功 |
+
+> **参考**: [Restricting access to a Lambda function URL - Amazon CloudFront](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-lambda.html)
+
 ### 認証について
 
 このテンプレートでは Lambda 側に基本認証機能を実装していません。理由は以下の通りです：
@@ -41,8 +74,9 @@ CloudFront (CDN) → Lambda Function URL → Lambda (phpMyAdmin + Lambda Web Ada
    - OAuth 2.0 / OpenID Connect による認証
    - CloudFront + Lambda@Edge や ALB と組み合わせて実装
 
-4. **IAM 認証（現在の構成）**
-   - CloudFront の Origin Access Control (OAC) + Lambda Function URL の `AWS_IAM` 認証で、プログラマティックアクセスを保護
+4. **カスタムヘッダ認証（現在の構成）**
+   - CloudFront がオリジンへ `X-Origin-Verify` ヘッダを付加し、Lambda の Apache がヘッダを検証
+   - POST リクエストの SigV4 ボディハッシュ不一致問題を回避
 
 ### セッションについて
 
@@ -81,7 +115,8 @@ Lambda はステートレスな実行環境であるため、通常の PHP フ�
 
 | 変数 | 必須 | 説明 |
 |------|------|------|
-| `PMA_BLOWFISH_SECRET` | ○ | 暗号化キーとして使用。32 文字以上のランダム文字列を推奨 |
+| `PMA_BLOWFISH_SECRET` | ○ | Cookie セッション暗号化キー。32 文字以上のランダム文字列を推奨 |
+| `CLOUDFRONT_ORIGIN_SECRET` | △ | CloudFront カスタムオリジンヘッダと一致するシークレット。Lambda 環境では必須。未設定時はヘッダ検証をスキップ（ローカル開発向け） |
 
 `PMA_BLOWFISH_SECRET` が未設定の場合、Cookie セッションハンドラーは登録されず、`/tmp` へのファイルセッションにフォールバックします（インスタンスローカルなステートフルセッション）。
 
@@ -107,14 +142,15 @@ resource "aws_lambda_function" "phpmyadmin" {
   # ...
   environment {
     variables = {
-      PMA_ARBITRARY       = "1"
-      PMA_BLOWFISH_SECRET = var.pma_blowfish_secret  # AWS Secrets Manager などから取得
+      PMA_ARBITRARY            = "1"
+      PMA_BLOWFISH_SECRET      = var.pma_blowfish_secret      # AWS Secrets Manager などから取得
+      CLOUDFRONT_ORIGIN_SECRET = var.cloudfront_origin_secret # AWS Secrets Manager などから取得
     }
   }
 }
 ```
 
-`PMA_BLOWFISH_SECRET` は AWS Secrets Manager または SSM Parameter Store（SecureString）で管理し、Terraform `var` や Lambda の環境変数として注入することを推奨します。
+`PMA_BLOWFISH_SECRET` および `CLOUDFRONT_ORIGIN_SECRET` は AWS Secrets Manager または SSM Parameter Store（SecureString）で管理し、Terraform `var` や Lambda の環境変数として注入することを推奨します。
 
 ## Directory Structure
 
@@ -183,19 +219,21 @@ terraform apply \
 
 ### セキュアな設定例
 
-`pma_blowfish_secret` を必ず設定してください。Cookie セッションの AES-256 暗号化キーに使用されます。
+`pma_blowfish_secret` と `cloudfront_origin_secret` を必ず設定してください。前者は Cookie セッションの AES-256 暗号化キー、後者は CloudFront ↔ Lambda 間のアクセス制御シークレットです。
 
 ```bash
 terraform apply \
   -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest" \
-  -var='pma_blowfish_secret=<32文字以上のランダム文字列>'
+  -var='pma_blowfish_secret=<32文字以上のランダム文字列>' \
+  -var='cloudfront_origin_secret=<32文字以上の別のランダム文字列>'
 ```
 
-> **推奨**: `pma_blowfish_secret` はバージョン管理から除外した `terraform.tfvars` または AWS Secrets Manager / SSM Parameter Store (SecureString) で管理してください。
+> **推奨**: 両シークレットはバージョン管理から除外した `terraform.tfvars` または AWS Secrets Manager / SSM Parameter Store (SecureString) で管理してください。
 
 ```hcl
 # terraform.tfvars (.gitignore に追加してバージョン管理対象外にすること)
-pma_blowfish_secret = "your-random-32-char-secret-here!!"
+pma_blowfish_secret      = "your-random-32-char-secret-here!!"
+cloudfront_origin_secret = "another-random-32-char-secret!!!"
 ```
 
 ## Example

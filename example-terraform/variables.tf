@@ -50,6 +50,17 @@ variable "security_group_ids" {
 # Security
 # ---------------------------------------------------------------------------
 
+variable "cloudfront_origin_secret" {
+  description = "Secret value that CloudFront adds as the X-Origin-Verify request header when forwarding to the Lambda origin. Apache rejects any request that omits or mismatches this value, preventing direct access to the Lambda Function URL that bypasses CloudFront. Must be at least 32 characters. Treat as sensitive; pass via -var or a .tfvars file excluded from version control."
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(var.cloudfront_origin_secret) >= 32
+    error_message = "cloudfront_origin_secret must be at least 32 characters long."
+  }
+}
+
 variable "pma_blowfish_secret" {
   description = "Secret key used to encrypt phpMyAdmin cookie-based sessions (PMA_BLOWFISH_SECRET). Must be 32 characters or longer. Treat as sensitive; pass via -var or a .tfvars file excluded from version control."
   type        = string
