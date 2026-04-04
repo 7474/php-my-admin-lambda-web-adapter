@@ -11,10 +11,6 @@ resource "aws_cloudfront_distribution" "phpmyadmin" {
   is_ipv6_enabled = true
   comment         = var.name
 
-  depends_on = [
-    aws_lambda_permission.allow_cloudfront_function_url,
-  ]
-
   origin {
     domain_name = trimsuffix(trimprefix(aws_lambda_function_url.phpmyadmin.function_url, "https://"), "/")
     origin_id   = "lambda"

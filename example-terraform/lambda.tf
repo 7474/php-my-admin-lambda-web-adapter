@@ -94,17 +94,6 @@ resource "aws_lambda_function_url" "phpmyadmin" {
   authorization_type = "NONE"
 }
 
-# With authorization_type=NONE the Function URL is publicly accessible.
-# Access restriction is enforced at the Apache layer via the X-Origin-Verify
-# header secret set by CloudFront as a custom origin header.
-resource "aws_lambda_permission" "allow_cloudfront_function_url" {
-  statement_id           = "AllowPublicFunctionUrlInvoke"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.phpmyadmin.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-}
-
 output "lambda_function_url" {
   description = "Lambda function URL (direct access)"
   value       = aws_lambda_function_url.phpmyadmin.function_url
