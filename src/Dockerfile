@@ -1,6 +1,8 @@
+ARG BASE_IMAGE=phpmyadmin/phpmyadmin:5.2.3
+
 FROM public.ecr.aws/awsguru/aws-lambda-adapter:1.0.0 AS lambda-adapter
 
-FROM phpmyadmin/phpmyadmin:5.2.3
+FROM ${BASE_IMAGE}
 
 COPY --from=lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
 
