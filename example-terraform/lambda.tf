@@ -47,11 +47,16 @@ resource "aws_lambda_function" "phpmyadmin" {
 
   environment {
     variables = {
-      PMA_ARBITRARY       = var.pma_arbitrary
-      PMA_SSL             = var.pma_ssl
+      PMA_ARBITRARY            = var.pma_arbitrary
+      PMA_SSL                  = var.pma_ssl
       # Used both by phpMyAdmin (blowfish_secret) and by the Cookie session handler
       # to derive the AES-256 encryption key.  Keep this value secret.
-      PMA_BLOWFISH_SECRET = var.pma_blowfish_secret
+      PMA_BLOWFISH_SECRET      = var.pma_blowfish_secret
+      # Apache checks every incoming request for this header value (set by
+      # CloudFront as a custom origin header).  Requests that arrive without
+      # the correct value are rejected with HTTP 403, preventing direct access
+      # to the Lambda Function URL that bypasses CloudFront.
+      CLOUDFRONT_ORIGIN_SECRET = var.cloudfront_origin_secret
     }
   }
 
@@ -86,30 +91,21 @@ resource "aws_lambda_function" "phpmyadmin" {
 
 resource "aws_lambda_function_url" "phpmyadmin" {
   function_name      = aws_lambda_function.phpmyadmin.function_name
-  authorization_type = "AWS_IAM"
+  authorization_type = "NONE"
 }
 
 data "aws_caller_identity" "current" {}
 
-# Allow CloudFront (signed by Origin Access Control) to invoke this Function URL.
+# Allow CloudFront to invoke this Function URL.  With authorization_type=NONE
+# the Lambda service itself does not enforce IAM auth, but this permission
+# still documents CloudFront as the intended caller.
 resource "aws_lambda_permission" "allow_cloudfront_function_url" {
   statement_id           = "AllowCloudFrontFunctionUrlInvoke"
   action                 = "lambda:InvokeFunctionUrl"
   function_name          = aws_lambda_function.phpmyadmin.function_name
   principal              = "cloudfront.amazonaws.com"
-  function_url_auth_type = "AWS_IAM"
+  function_url_auth_type = "NONE"
   source_arn             = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
-}
-
-# Some AWS clients additionally require lambda:InvokeFunction with
-# invoked_via_function_url=true when using Function URL + AWS_IAM.
-resource "aws_lambda_permission" "allow_cloudfront_invoke_function" {
-  statement_id             = "AllowCloudFrontInvokeFunctionViaUrl"
-  action                   = "lambda:InvokeFunction"
-  function_name            = aws_lambda_function.phpmyadmin.function_name
-  principal                = "cloudfront.amazonaws.com"
-  source_arn               = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
-  invoked_via_function_url = true
 }
 
 output "lambda_function_url" {

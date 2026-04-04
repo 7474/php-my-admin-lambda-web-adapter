@@ -1,11 +1,3 @@
-resource "aws_cloudfront_origin_access_control" "lambda" {
-  name                              = "${var.name}-lambda-oac"
-  description                       = "SigV4 signing for Lambda Function URL origin"
-  origin_access_control_origin_type = "lambda"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
-
 data "aws_cloudfront_cache_policy" "managed_caching_disabled" {
   name = "Managed-CachingDisabled"
 }
@@ -21,13 +13,18 @@ resource "aws_cloudfront_distribution" "phpmyadmin" {
 
   depends_on = [
     aws_lambda_permission.allow_cloudfront_function_url,
-    aws_lambda_permission.allow_cloudfront_invoke_function,
   ]
 
   origin {
-    domain_name              = trimsuffix(trimprefix(aws_lambda_function_url.phpmyadmin.function_url, "https://"), "/")
-    origin_id                = "lambda"
-    origin_access_control_id = aws_cloudfront_origin_access_control.lambda.id
+    domain_name = trimsuffix(trimprefix(aws_lambda_function_url.phpmyadmin.function_url, "https://"), "/")
+    origin_id   = "lambda"
+
+    # Secret header that Lambda/Apache uses to reject requests that bypass
+    # CloudFront and arrive at the Function URL directly.
+    custom_header {
+      name  = "X-Origin-Verify"
+      value = var.cloudfront_origin_secret
+    }
 
     custom_origin_config {
       http_port              = 80

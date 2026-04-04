@@ -76,6 +76,15 @@ RUN if ! getent group www-data > /dev/null; then \
         useradd --uid 33 --gid 33 --home-dir /var/www --shell /usr/sbin/nologin www-data; \
     fi
 
+# Add Apache origin-verify check: reject requests that do not carry the
+# X-Origin-Verify header set by CloudFront as a custom origin header.
+# The expected value is read from the CLOUDFRONT_ORIGIN_SECRET environment
+# variable at runtime, so it never has to be baked into the image.
+# When the variable is unset (e.g. local docker-compose), all requests pass
+# through unchanged — see origin-verify.conf for details.
+COPY origin-verify.conf /etc/apache2/conf-available/origin-verify.conf
+RUN a2enmod rewrite && a2enconf origin-verify
+
 ENV PORT=8080
 EXPOSE 8080
 
