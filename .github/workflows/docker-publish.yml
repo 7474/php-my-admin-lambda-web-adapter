@@ -20,7 +20,7 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            tag_suffix: ''
+            tag_suffix: '-amd64'
             base_image: phpmyadmin/phpmyadmin:5.2.3
           - platform: linux/arm64
             tag_suffix: -arm64
