@@ -15,13 +15,16 @@
  * filesystem path configured by session.save_path.
  */
 
-// Start a top-level output buffer so that headers_sent() stays false even when
-// phpMyAdmin flushes its own (nested) buffers mid-request.  Without this,
-// session cycle 3's close() cannot modify Set-Cookie headers because PHP has
-// already flushed headers + body to the client.  PHP automatically flushes all
-// remaining output buffers at script shutdown.
+// Start a NON-REMOVABLE top-level output buffer so that headers_sent() stays
+// false even when phpMyAdmin flushes all nested buffers via
+// `while (@ob_end_flush());`.  By omitting PHP_OUTPUT_HANDLER_REMOVABLE,
+// ob_end_flush() / ob_end_clean() silently fail on this buffer, keeping it in
+// place.  Data from inner buffers is flushed INTO this buffer instead of to
+// the client, so headers remain unsent.  PHP automatically flushes this buffer
+// at script shutdown.
 if (PHP_SAPI !== 'cli') {
-    ob_start();
+    ob_start(null, 0, PHP_OUTPUT_HANDLER_FLUSHABLE | PHP_OUTPUT_HANDLER_CLEANABLE);
+    error_log('[PMA_SESS] Started top-level output buffer to defer headers');
 }
 
 // Defense in depth for direct Function URL access: when a secret is configured,
