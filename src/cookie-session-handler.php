@@ -37,6 +37,17 @@ class CookieSessionHandler implements SessionHandlerInterface
     /** @var string 32-byte binary key derived from the secret */
     private string $key;
 
+    /**
+     * Flag set by destroy() and cleared by write().  When close() is called
+     * with this flag still set it means the session was truly destroyed (e.g.
+     * logout) rather than regenerated, so the cookie must be deleted.
+     *
+     * Without this mechanism, session_regenerate_id(true) causes destroy() to
+     * emit a deletion Set-Cookie *before* the final write() for the new
+     * session, leaving the browser with PMA_SESS=deleted and no session data.
+     */
+    private bool $pendingDestroy = false;
+
     public function __construct(string $secret)
     {
         // Derive a fixed 32-byte key regardless of secret length.
@@ -50,6 +61,20 @@ class CookieSessionHandler implements SessionHandlerInterface
 
     public function close(): bool
     {
+        if ($this->pendingDestroy) {
+            $this->pendingDestroy = false;
+
+            $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                   || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+
+            setcookie(self::COOKIE_NAME, '', [
+                'expires'  => time() - 3600,
+                'path'     => '/',
+                'secure'   => $secure,
+                'httponly'  => true,
+                'samesite'  => 'Strict',
+            ]);
+        }
         return true;
     }
 
@@ -93,6 +118,10 @@ class CookieSessionHandler implements SessionHandlerInterface
 
     public function write(string $id, string $data): bool
     {
+        // A write() after destroy() means session_regenerate_id(true) — the
+        // session was not truly destroyed, so cancel the pending deletion.
+        $this->pendingDestroy = false;
+
         $ivLen = openssl_cipher_iv_length(self::CIPHER);
         $iv    = random_bytes($ivLen);
 
@@ -127,12 +156,13 @@ class CookieSessionHandler implements SessionHandlerInterface
 
     public function destroy(string $id): bool
     {
-        setcookie(self::COOKIE_NAME, '', [
-            'expires'  => time() - 3600,
-            'path'     => '/',
-            'httponly' => true,
-            'samesite' => 'Strict',
-        ]);
+        // Do not emit the deletion cookie immediately.  If this destroy() is
+        // part of session_regenerate_id(true), a subsequent write() for the
+        // new session will clear the flag and the cookie will be overwritten
+        // with the new session data instead.  If this is a genuine
+        // session_destroy() (e.g. logout), close() will see the flag and
+        // emit the deletion cookie at that point.
+        $this->pendingDestroy = true;
         unset($_COOKIE[self::COOKIE_NAME]);
         return true;
     }
