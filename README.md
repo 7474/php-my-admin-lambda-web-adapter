@@ -74,10 +74,6 @@ CloudFront OAC は SigV4 署名を付与しますが、**POST ボディのハッ
    - OAuth 2.0 / OpenID Connect による認証
    - CloudFront + Lambda@Edge や ALB と組み合わせて実装
 
-4. **カスタムヘッダ認証（現在の構成）**
-   - CloudFront がオリジンへ `X-Origin-Verify` ヘッダを付加し、Lambda の Apache がヘッダを検証
-   - POST リクエストの SigV4 ボディハッシュ不一致問題を回避
-
 ### セッションについて
 
 Lambda はステートレスな実行環境であるため、通常の PHP ファイルセッションは以下の問題を抱えています。
