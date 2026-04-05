@@ -15,18 +15,6 @@
  * filesystem path configured by session.save_path.
  */
 
-// Start a NON-REMOVABLE top-level output buffer so that headers_sent() stays
-// false even when phpMyAdmin flushes all nested buffers via
-// `while (@ob_end_flush());`.  By omitting PHP_OUTPUT_HANDLER_REMOVABLE,
-// ob_end_flush() / ob_end_clean() silently fail on this buffer, keeping it in
-// place.  Data from inner buffers is flushed INTO this buffer instead of to
-// the client, so headers remain unsent.  PHP automatically flushes this buffer
-// at script shutdown.
-if (PHP_SAPI !== 'cli') {
-    ob_start(null, 0, PHP_OUTPUT_HANDLER_FLUSHABLE | PHP_OUTPUT_HANDLER_CLEANABLE);
-    error_log('[PMA_SESS] Started top-level output buffer to defer headers');
-}
-
 // Defense in depth for direct Function URL access: when a secret is configured,
 // reject requests that do not carry the exact X-Origin-Verify header value.
 $_originVerifySecret = getenv('CLOUDFRONT_ORIGIN_SECRET') ?: '';
@@ -272,7 +260,25 @@ class CookieSessionHandler implements SessionHandlerInterface
 
 $_cookieSessionSecret = getenv('PMA_BLOWFISH_SECRET') ?: (getenv('SESSION_SECRET') ?: '');
 if ($_cookieSessionSecret !== '') {
-    session_set_save_handler(new CookieSessionHandler($_cookieSessionSecret), true);
-    error_log('[PMA_SESS] Registered CookieSessionHandler');
+    $_cookieHandler = new CookieSessionHandler($_cookieSessionSecret);
+    // IMPORTANT: register_shutdown = false.  We register our OWN shutdown
+    // function instead, because PHP's default shutdown sequence is:
+    //   1. register_shutdown_function callbacks (in registration order)
+    //   2. Flush output buffers  → headers sent to client
+    //   3. Session module close  → write() + close()
+    // With register_shutdown = true, session close happens at step 3, AFTER
+    // headers are already sent, making it impossible to emit Set-Cookie.
+    // By calling session_write_close() in our shutdown function (step 1),
+    // we ensure write() + close() run BEFORE headers are sent.
+    session_set_save_handler($_cookieHandler, false);
+
+    register_shutdown_function(function () {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            error_log('[PMA_SESS] Shutdown: closing active session before output flush');
+            session_write_close();
+        }
+    });
+
+    error_log('[PMA_SESS] Registered CookieSessionHandler (manual shutdown)');
 }
-unset($_cookieSessionSecret);
+unset($_cookieSessionSecret, $_cookieHandler);
