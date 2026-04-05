@@ -5,7 +5,7 @@
 # call.  AWS Lambda mounts container image layers as a read-only filesystem,
 # so any attempt to change file ownership at runtime fails with EPERM.
 # The file is pre-created at image build time with the correct ownership
-# (root:www-data) and mode (640) by the Dockerfile RUN step, so the chgrp
+# (root:www-data) and mode (644) by the Dockerfile RUN step, so the chgrp
 # is not needed.
 if [[ "$1" == apache2* ]] || [ "$1" == php-fpm ]; then
 

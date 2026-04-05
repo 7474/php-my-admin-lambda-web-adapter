@@ -7,7 +7,7 @@
 `PMA_SSL` 環境変数に `1` を設定することで SSL/TLS 設定を有効にしてサーバに接続するようになります。
 PlanetScale などの DBaaS に接続する際に設定します。
 
-コンテナは **8080** ポートでリッスンします (Lambda Web Adapter のデフォルトポート)。
+コンテナは `8080` ポートでリッスンします (Lambda Web Adapter のデフォルトポート)。
 
 ## Architecture
 
@@ -30,13 +30,13 @@ Lambda Function URL はパブリックに公開されています。直接アク
 #### 仕組み
 
 ```
-CloudFront → (X-Origin-Verify: <secret>) → Lambda Function URL → Apache → phpMyAdmin
+CloudFront → (X-Origin-Verify: <secret>) → Lambda Function URL → PHP (auto_prepend_file) → Apache → phpMyAdmin
                                                                   ↑
                                               ヘッダが一致しない場合 403 を返す
 ```
 
 1. CloudFront がオリジンへリクエストを転送する際に `X-Origin-Verify` ヘッダにシークレット値を付加します（`cloudfront_origin_secret` variable）。
-2. Lambda の Apache が `CLOUDFRONT_ORIGIN_SECRET` 環境変数と照合し、一致しない場合は HTTP 403 を返します。
+2. PHP の `auto_prepend_file`（[`cookie-session-handler.php`](src/cookie-session-handler.php)）が `CLOUDFRONT_ORIGIN_SECRET` 環境変数と照合し、一致しない場合は HTTP 403 を返します。
 3. CloudFront は `X-Origin-Verify` ヘッダをビューアへは転送しないため、シークレット値が外部に漏れません。
 
 #### なぜ OAC（AWS_IAM）を使わないのか
@@ -73,10 +73,6 @@ CloudFront OAC は SigV4 署名を付与しますが、**POST ボディのハッ
 3. **Amazon Cognito**
    - OAuth 2.0 / OpenID Connect による認証
    - CloudFront + Lambda@Edge や ALB と組み合わせて実装
-
-4. **カスタムヘッダ認証（現在の構成）**
-   - CloudFront がオリジンへ `X-Origin-Verify` ヘッダを付加し、Lambda の Apache がヘッダを検証
-   - POST リクエストの SigV4 ボディハッシュ不一致問題を回避
 
 ### セッションについて
 
@@ -156,9 +152,12 @@ resource "aws_lambda_function" "phpmyadmin" {
 
 - [`src/`](src/) - コンテナイメージのソース
   - [`Dockerfile`](src/Dockerfile) - Lambda Web Adapter を組み込んだ phpMyAdmin イメージ
-  - [`config.user.inc.php`](src/config.user.inc.php) - phpMyAdmin SSL設定
+  - [`config.user.inc.php`](src/config.user.inc.php) - phpMyAdmin SSL設定 & TempDir 設定
+  - [`cookie-session-handler.php`](src/cookie-session-handler.php) - Cookie ベースのセッションハンドラー & オリジン検証
+  - [`docker-entrypoint.sh`](src/docker-entrypoint.sh) - カスタムエントリポイント（Lambda の読み取り専用ファイルシステム対応）
   - [`docker-compose.yml`](src/docker-compose.yml) - ローカル開発用 docker-compose
 - [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) - ECR Private / GHCR へのイメージ Push ワークフロー
+- [`.github/dependabot.yml`](.github/dependabot.yml) - 依存関係の自動更新設定
 - [`ecr-terraform/`](ecr-terraform/) - ECR Private リポジトリと GitHub Actions OIDC ロールの Terraform
 - [`example-terraform/`](example-terraform/) - Lambda + CloudFront デプロイ例の Terraform
 
@@ -174,14 +173,11 @@ terraform apply -var="region=ap-northeast-1"
 
 `github_actions_role_arn` と `repository_uri` の出力値を控えておきます。
 
-### 2. GitHub Secrets の設定
-
-| Secret | 説明 |
-|--------|------|
-| `AWS_ROLE_ARN` | ecr-terraform で作成した GitHub Actions IAM ロール ARN |
+### 2. GitHub Variables の設定
 
 | Variable | 説明 |
 |----------|------|
+| `AWS_ROLE_ARN` | ecr-terraform で作成した GitHub Actions IAM ロール ARN |
 | `AWS_REGION` | ECR Private を作成したリージョン (例: `ap-northeast-1`) |
 | `ECR_REPOSITORY_URI` | ecr-terraform の `repository_uri` 出力値 |
 

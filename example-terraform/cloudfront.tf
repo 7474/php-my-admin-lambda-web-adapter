@@ -1,5 +1,26 @@
-data "aws_cloudfront_cache_policy" "managed_caching_disabled" {
-  name = "Managed-CachingDisabled"
+resource "aws_cloudfront_cache_policy" "phpmyadmin_use_origin_cache_default_ttl_long" {
+  name        = "${var.name}-cache-optimized-default-ttl-long"
+  comment     = "Cache optimized behavior with default TTL set to 1 day"
+  default_ttl = 86400
+  max_ttl     = 31536000
+  min_ttl     = 0
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    cookies_config {
+      cookie_behavior = "none"
+    }
+
+    headers_config {
+      header_behavior = "none"
+    }
+
+    query_strings_config {
+      query_string_behavior = "none"
+    }
+
+    enable_accept_encoding_brotli = true
+    enable_accept_encoding_gzip   = true
+  }
 }
 
 data "aws_cloudfront_origin_request_policy" "managed_all_viewer_except_host_header" {
@@ -35,7 +56,7 @@ resource "aws_cloudfront_distribution" "phpmyadmin" {
     viewer_protocol_policy   = "redirect-to-https"
     allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods           = ["GET", "HEAD"]
-    cache_policy_id          = data.aws_cloudfront_cache_policy.managed_caching_disabled.id
+    cache_policy_id          = aws_cloudfront_cache_policy.phpmyadmin_use_origin_cache_default_ttl_long.id
     origin_request_policy_id = data.aws_cloudfront_origin_request_policy.managed_all_viewer_except_host_header.id
   }
 
