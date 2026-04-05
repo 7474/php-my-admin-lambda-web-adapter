@@ -24,6 +24,7 @@ if (PHP_SAPI !== 'cli' && $_originVerifySecret !== '') {
         http_response_code(403);
         header('Content-Type: text/plain; charset=UTF-8');
         echo "Forbidden\n";
+        error_log('[PMA_SESS] Origin verification failed');
         exit;
     }
 }
@@ -43,6 +44,9 @@ class CookieSessionHandler implements SessionHandlerInterface
     /** True when destroy() was called and no subsequent write() overrode it. */
     private bool $shouldDelete = false;
 
+    /** Monotonically increasing cycle counter for log tracing. */
+    private int $cycle = 0;
+
     public function __construct(string $secret)
     {
         // Derive a fixed 32-byte key regardless of secret length.
@@ -51,6 +55,13 @@ class CookieSessionHandler implements SessionHandlerInterface
 
     public function open(string $savePath, string $sessionName): bool
     {
+        $this->cycle++;
+        error_log(sprintf(
+            '[PMA_SESS][cycle=%d] open(sessionName=%s) deferredPayload=%s shouldDelete=%s',
+            $this->cycle, $sessionName,
+            $this->deferredPayload !== null ? 'SET(' . strlen($this->deferredPayload) . 'B)' : 'null',
+            $this->shouldDelete ? 'true' : 'false'
+        ));
         return true;
     }
 
@@ -66,6 +77,13 @@ class CookieSessionHandler implements SessionHandlerInterface
      */
     public function close(): bool
     {
+        error_log(sprintf(
+            '[PMA_SESS][cycle=%d] close() deferredPayload=%s shouldDelete=%s',
+            $this->cycle,
+            $this->deferredPayload !== null ? 'SET(' . strlen($this->deferredPayload) . 'B)' : 'null',
+            $this->shouldDelete ? 'true' : 'false'
+        ));
+
         $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
                || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
 
@@ -79,6 +97,7 @@ class CookieSessionHandler implements SessionHandlerInterface
                 'httponly'  => true,
                 'samesite' => 'Strict',
             ]);
+            error_log(sprintf('[PMA_SESS][cycle=%d] close() → emitted data cookie (%dB)', $this->cycle, strlen($this->deferredPayload)));
             $this->deferredPayload = null;
             $this->shouldDelete    = false;
         } elseif ($this->shouldDelete) {
@@ -92,7 +111,10 @@ class CookieSessionHandler implements SessionHandlerInterface
                 'httponly'  => true,
                 'samesite' => 'Strict',
             ]);
+            error_log(sprintf('[PMA_SESS][cycle=%d] close() → emitted DELETE cookie', $this->cycle));
             $this->shouldDelete = false;
+        } else {
+            error_log(sprintf('[PMA_SESS][cycle=%d] close() → no-op (nothing to emit)', $this->cycle));
         }
 
         return true;
@@ -107,18 +129,27 @@ class CookieSessionHandler implements SessionHandlerInterface
     public function read(string $id): string|false
     {
         $raw = $_COOKIE[self::COOKIE_NAME] ?? '';
+        error_log(sprintf(
+            '[PMA_SESS][cycle=%d] read(id=%s) cookiePresent=%s cookieLen=%d',
+            $this->cycle, $id,
+            $raw !== '' ? 'yes' : 'no',
+            strlen($raw)
+        ));
+
         if ($raw === '') {
             return '';
         }
 
         $data = base64_decode($raw, true);
         if ($data === false) {
+            error_log(sprintf('[PMA_SESS][cycle=%d] read() → base64_decode failed', $this->cycle));
             return '';
         }
 
         $ivLen = openssl_cipher_iv_length(self::CIPHER);
         // Layout: [ IV (ivLen bytes) | HMAC (32 bytes) | ciphertext ]
         if (strlen($data) < $ivLen + 32) {
+            error_log(sprintf('[PMA_SESS][cycle=%d] read() → data too short (%d bytes)', $this->cycle, strlen($data)));
             return '';
         }
 
@@ -129,20 +160,29 @@ class CookieSessionHandler implements SessionHandlerInterface
         // Verify integrity before decrypting.
         $expected = hash_hmac('sha256', $encrypted, $this->key, true);
         if (!hash_equals($expected, $hmac)) {
+            error_log(sprintf('[PMA_SESS][cycle=%d] read() → HMAC mismatch', $this->cycle));
             return '';
         }
 
         $plain = openssl_decrypt($encrypted, self::CIPHER, $this->key, OPENSSL_RAW_DATA, $iv);
+        error_log(sprintf('[PMA_SESS][cycle=%d] read() → decrypted %d bytes', $this->cycle, $plain !== false ? strlen($plain) : -1));
         return $plain !== false ? $plain : '';
     }
 
     public function write(string $id, string $data): bool
     {
+        error_log(sprintf(
+            '[PMA_SESS][cycle=%d] write(id=%s, dataLen=%d) shouldDelete was %s',
+            $this->cycle, $id, strlen($data),
+            $this->shouldDelete ? 'true' : 'false'
+        ));
+
         $ivLen = openssl_cipher_iv_length(self::CIPHER);
         $iv    = random_bytes($ivLen);
 
         $encrypted = openssl_encrypt($data, self::CIPHER, $this->key, OPENSSL_RAW_DATA, $iv);
         if ($encrypted === false) {
+            error_log(sprintf('[PMA_SESS][cycle=%d] write() → encrypt failed', $this->cycle));
             return false;
         }
 
@@ -159,11 +199,17 @@ class CookieSessionHandler implements SessionHandlerInterface
         // session round-trip test in Session::setUp).
         $_COOKIE[self::COOKIE_NAME] = $payload;
 
+        error_log(sprintf('[PMA_SESS][cycle=%d] write() → staged %d bytes', $this->cycle, strlen($payload)));
         return true;
     }
 
     public function destroy(string $id): bool
     {
+        error_log(sprintf(
+            '[PMA_SESS][cycle=%d] destroy(id=%s) deferredPayload was %s',
+            $this->cycle, $id,
+            $this->deferredPayload !== null ? 'SET' : 'null'
+        ));
         $this->deferredPayload = null;
         $this->shouldDelete    = true;
         unset($_COOKIE[self::COOKIE_NAME]);
@@ -179,6 +225,7 @@ class CookieSessionHandler implements SessionHandlerInterface
     private function removeStaleCookieHeaders(): void
     {
         if (headers_sent()) {
+            error_log(sprintf('[PMA_SESS][cycle=%d] removeStaleCookieHeaders() → headers already sent!', $this->cycle));
             return;
         }
 
@@ -191,12 +238,14 @@ class CookieSessionHandler implements SessionHandlerInterface
             }
             if (strpos($header, self::COOKIE_NAME . '=') !== false) {
                 $found = true; // stale PMA_SESS — will be dropped
+                error_log(sprintf('[PMA_SESS][cycle=%d] removeStaleCookieHeaders() dropping: %s', $this->cycle, substr($header, 0, 80)));
             } else {
                 $keep[] = $header; // preserve other cookies
             }
         }
 
         if (!$found) {
+            error_log(sprintf('[PMA_SESS][cycle=%d] removeStaleCookieHeaders() → no stale PMA_SESS found', $this->cycle));
             return;
         }
 
@@ -205,11 +254,13 @@ class CookieSessionHandler implements SessionHandlerInterface
         foreach ($keep as $h) {
             header($h, false);
         }
+        error_log(sprintf('[PMA_SESS][cycle=%d] removeStaleCookieHeaders() → removed stale, re-added %d other cookies', $this->cycle, count($keep)));
     }
 }
 
 $_cookieSessionSecret = getenv('PMA_BLOWFISH_SECRET') ?: (getenv('SESSION_SECRET') ?: '');
 if ($_cookieSessionSecret !== '') {
     session_set_save_handler(new CookieSessionHandler($_cookieSessionSecret), true);
+    error_log('[PMA_SESS] Registered CookieSessionHandler');
 }
 unset($_cookieSessionSecret);
