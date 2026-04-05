@@ -15,6 +15,15 @@
  * filesystem path configured by session.save_path.
  */
 
+// Start a top-level output buffer so that headers_sent() stays false even when
+// phpMyAdmin flushes its own (nested) buffers mid-request.  Without this,
+// session cycle 3's close() cannot modify Set-Cookie headers because PHP has
+// already flushed headers + body to the client.  PHP automatically flushes all
+// remaining output buffers at script shutdown.
+if (PHP_SAPI !== 'cli') {
+    ob_start();
+}
+
 // Defense in depth for direct Function URL access: when a secret is configured,
 // reject requests that do not carry the exact X-Origin-Verify header value.
 $_originVerifySecret = getenv('CLOUDFRONT_ORIGIN_SECRET') ?: '';
