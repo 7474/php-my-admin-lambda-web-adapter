@@ -22,6 +22,75 @@ CloudFront (CDN) → Lambda Function URL → Lambda (phpMyAdmin + Lambda Web Ada
 
 1. **VPCアクセス（Lambda VPC 配置時）**
    - `subnet_ids` と `security_group_ids` を指定することで Lambda を VPC 内に配置し、プライベートサブネットの RDS / Aurora に接続できます。
+   - Lambda を VPC 内に配置すると、外部インターネットへのアウトバウンド通信がデフォルトでブロックされます。外部の DBaaS（PlanetScale など）に接続する場合は、以下の手順で VPC に NAT Gateway を設定してください：
+     1. Internet Gateway を持つパブリックサブネットを作成
+     2. そのサブネットに NAT Gateway を配置
+     3. Lambda が使用するプライベートサブネットのルートテーブルに `0.0.0.0/0 → NAT Gateway` のルートを追加
+   - VPC 内の RDS/Aurora にのみ接続する場合は NAT Gateway 不要です。
+
+2. **Lambda 読み取り専用ファイルシステム**
+
+   Lambda のコンテナ実行環境ではルートファイルシステムが読み取り専用にマウントされます。実行時に書き込めるのは `/tmp` のみです。この制約への対処として、以下の設定が Dockerfile に組み込まれています：
+
+   | 対象 | デフォルトパス（変更前） | Lambda 向け変更後 |
+   |------|------|------|
+   | Apache PID ファイル | `/var/run/apache2/apache2.pid` | `/tmp/apache2.pid` |
+   | Apache ロック/Mutex ディレクトリ | `/var/lock/apache2` | `/tmp/apache2-locks` |
+   | PHP セッション保存先 | `/var/lib/php/sessions/` | `/tmp` |
+   | phpMyAdmin TempDir | `/var/www/html/tmp/` | `/tmp/phpmyadmin` |
+   | `config.secret.inc.php` | エントリポイントが実行時に生成 | Dockerfile でビルド時に生成済み |
+
+   コールドスタートごとに `/tmp` は空の状態でマウントされるため、必要なサブディレクトリ（`/tmp/apache2-locks`、`/tmp/phpmyadmin`）はエントリポイント内で `mkdir -p` により作成しています。
+
+   また、上流イメージのエントリポイントには起動時に `chgrp www-data /etc/phpmyadmin/config.secret.inc.php` を実行するコードが含まれており、読み取り専用ファイルシステム上では `EPERM` で失敗します。このリポジトリではカスタムエントリポイント（`docker-entrypoint.sh`）でその行を除去し、`config.secret.inc.php` をビルド時に生成することで問題を回避しています。
+
+3. **Apache ユーザー名解決（AH00543）**
+
+   Lambda の一部実行環境では `getpwnam("www-data")` が NULL を返し、Apache が以下のエラーで起動に失敗します：
+
+   ```text
+   AH00543: httpd: bad user name www-data
+   ```
+
+   これを回避するため、Dockerfile では Apache ワーカープロセスをユーザー名ではなく数値 UID/GID（`#33`）で実行しています：
+
+   ```dockerfile
+   ENV APACHE_RUN_USER=#33 \
+       APACHE_RUN_GROUP=#33
+   ```
+
+4. **イメージアーキテクチャ（amd64 のみ）**
+
+   `phpmyadmin/phpmyadmin` のベースイメージは `linux/amd64` のみで公開されています。`linux/arm64` 向けにビルドしようとすると QEMU が ELF バイナリを実行できず、以下のようなエラーになります：
+
+   ```text
+   .buildkit_qemu_emulator: /bin/sh: Invalid ELF image for this architecture
+   WARNING: InvalidBaseImagePlatform: Base image phpmyadmin/phpmyadmin:5.2.3 was pulled with
+     platform "linux/amd64", expected "linux/arm64"
+   ```
+
+   そのため、このリポジトリのビルドワークフローは `linux/amd64` のみを対象としています。AWS Graviton (arm64) インスタンスタイプの Lambda では動作しません。
+
+5. **Docker イメージビルド時の OCI メディアタイプ問題**
+
+   `docker/build-push-action` v4 以降はデフォルトで Provenance Attestation（`provenance: true`）を有効にしており、OCI イメージインデックス形式のマニフェストが生成されます。ECR がこの形式を拒否する場合があるため、ビルドワークフローでは `provenance: false` を明示的に指定しています：
+
+   ```yaml
+   - uses: docker/build-push-action@...
+     with:
+       provenance: false
+   ```
+
+6. **Lambda のタイムアウト・メモリ設定**
+
+   phpMyAdmin はコールドスタート時の初期化に時間がかかる場合があります。`example-terraform` ではデフォルト値として以下を設定しています：
+
+   | 設定 | 値 |
+   |------|------|
+   | タイムアウト | 30 秒 |
+   | メモリサイズ | 512 MB |
+
+   利用状況に応じて調整してください。
 
 ### アクセス制御について
 
@@ -113,6 +182,8 @@ Lambda はステートレスな実行環境であるため、通常の PHP フ�
 |------|------|------|
 | `PMA_BLOWFISH_SECRET` | ○ | Cookie セッション暗号化キー。32 文字以上のランダム文字列を推奨 |
 | `CLOUDFRONT_ORIGIN_SECRET` | △ | CloudFront カスタムオリジンヘッダと一致するシークレット。Lambda 環境では必須。未設定時はヘッダ検証をスキップ（ローカル開発向け） |
+| `SESSION_SECRET` | × | `PMA_BLOWFISH_SECRET` のフォールバック。両方とも未設定の場合はファイルセッション（`/tmp`）にフォールバック |
+| `PMA_SESS_DEBUG` | × | `1` に設定するとセッションハンドラーのデバッグログを `error_log` に出力します（トラブルシュート用） |
 
 `PMA_BLOWFISH_SECRET` が未設定の場合、Cookie セッションハンドラーは登録されず、`/tmp` へのファイルセッションにフォールバックします（インスタンスローカルなステートフルセッション）。
 
