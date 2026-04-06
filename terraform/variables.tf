@@ -1,4 +1,3 @@
-
 variable "access_key" {
   description = "AWS Access Key"
 }
@@ -13,20 +12,6 @@ variable "region" {
 
 variable "name" {
   default = "phpmyadmin-lambda-adapter"
-}
-
-variable "image_uri" {
-  description = "Container image URI in a private ECR repository in the same region as Lambda (e.g. <account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest)"
-
-  validation {
-    condition     = !can(regex("^public\\.ecr\\.aws/", var.image_uri))
-    error_message = "image_uri must not use ECR Public. Use a private ECR image URI in the same region as Lambda."
-  }
-
-  validation {
-    condition     = !can(regex("\\.amazonaws\\.com/ecr-public/", var.image_uri))
-    error_message = "image_uri must not use ECR pull through cache for ecr-public. Use a private ECR image URI in the same region as Lambda."
-  }
 }
 
 variable "pma_arbitrary" {

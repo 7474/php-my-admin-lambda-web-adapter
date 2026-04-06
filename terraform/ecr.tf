@@ -1,23 +1,7 @@
-locals {
-  name = "phpmyadmin-lambda-adapter"
-}
-
-provider "aws" {
-  region     = var.region
-  access_key = var.access_key
-  secret_key = var.secret_key
-
-  default_tags {
-    tags = {
-      Environment = local.name
-    }
-  }
-}
-
 module "private_ecr" {
   source = "terraform-aws-modules/ecr/aws"
 
-  repository_name = local.name
+  repository_name = var.name
 }
 
 data "aws_iam_openid_connect_provider" "github" {
@@ -42,7 +26,7 @@ data "aws_iam_policy_document" "github_actions" {
 }
 
 resource "aws_iam_role" "github_actions" {
-  name               = "${local.name}-github-actions"
+  name               = "${var.name}-github-actions"
   assume_role_policy = data.aws_iam_policy_document.github_actions.json
 }
 
@@ -52,7 +36,7 @@ resource "aws_iam_role_policy_attachment" "github_actions_ecr_push" {
 }
 
 resource "aws_iam_policy" "github_actions_ecr_push" {
-  name   = "${local.name}-github-actions"
+  name   = "${var.name}-github-actions"
   policy = data.aws_iam_policy_document.github_actions_ecr_push.json
 }
 

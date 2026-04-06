@@ -158,51 +158,41 @@ resource "aws_lambda_function" "phpmyadmin" {
   - [`docker-compose.yml`](src/docker-compose.yml) - ローカル開発用 docker-compose
 - [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) - ECR Private / GHCR へのイメージ Push ワークフロー
 - [`.github/dependabot.yml`](.github/dependabot.yml) - 依存関係の自動更新設定
-- [`ecr-terraform/`](ecr-terraform/) - ECR Private リポジトリと GitHub Actions OIDC ロールの Terraform
-- [`example-terraform/`](example-terraform/) - Lambda + CloudFront デプロイ例の Terraform
+- [`terraform/`](terraform/) - ECR Private リポジトリ・GitHub Actions OIDC ロール・Lambda・CloudFront をまとめた Terraform
 
 ## Setup
 
-### 1. ECR Private リポジトリの作成
+### 1. Terraform の初期化とデプロイ
+
+ECR リポジトリの作成・GitHub Actions IAM ロールの作成・Lambda + CloudFront のデプロイをひとつの Terraform ワークスペースで行います。
 
 ```bash
-cd ecr-terraform
+cd terraform
 terraform init
 terraform apply -var="region=ap-northeast-1"
 ```
 
 `github_actions_role_arn` と `repository_uri` の出力値を控えておきます。
 
+> **注意**: 最初の `apply` 時点では ECR にイメージが存在しないため、Lambda リソースの作成がエラーになることがあります。イメージを Push した後に再度 `apply` してください。
+
 ### 2. GitHub Variables の設定
 
 | Variable | 説明 |
 |----------|------|
-| `AWS_ROLE_ARN` | ecr-terraform で作成した GitHub Actions IAM ロール ARN |
+| `AWS_ROLE_ARN` | terraform で作成した GitHub Actions IAM ロール ARN (`github_actions_role_arn` 出力値) |
 | `AWS_REGION` | ECR Private を作成したリージョン (例: `ap-northeast-1`) |
-| `ECR_REPOSITORY_URI` | ecr-terraform の `repository_uri` 出力値 |
+| `ECR_REPOSITORY_URI` | terraform の `repository_uri` 出力値 |
 
 ### 3. イメージの Push
 
 `main` ブランチへの push または `v*.*.*` タグの作成で自動的にイメージが ECR Private と GHCR へ Push されます。
 
-### 4. Lambda へのデプロイ
+### 4. Lambda のデプロイ完了
 
-AWS Lambda は **ECR Public** のイメージと **ECR pull through cache** のイメージを直接実行できません。  
-`public.ecr.aws/...` や `xxxxxxxxxxxx.dkr.ecr.<region>.amazonaws.com/ecr-public/...` を `image_uri` に指定すると、以下のようなエラーになることがあります。
+イメージが Push されたら、再度 `terraform apply` を実行して Lambda のデプロイを完了させます。
 
-```text
-InvalidParameterValueException: The image manifest, config or layer media type for the source image is not supported.
-```
-
-そのため、このリポジトリでは最初から Lambda と **同じリージョンの private ECR** に Push する構成にしています。`ecr-terraform` の `region` を Lambda のリージョンに合わせ、ワークフローでその `repository_uri` へ Push してください。
-
-```bash
-cd example-terraform
-terraform init
-terraform apply \
-  -var="region=ap-northeast-1" \
-  -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest"
-```
+AWS Lambda は **ECR Public** のイメージと **ECR pull through cache** のイメージを直接実行できません。このリポジトリでは Lambda と **同じリージョンの private ECR** にイメージを Push する構成にしており、ECR の `repository_url` を Lambda の `image_uri` として直接参照しています。
 
 ### セキュアな設定例
 
@@ -210,7 +200,6 @@ terraform apply \
 
 ```bash
 terraform apply \
-  -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest" \
   -var='pma_blowfish_secret=<32文字以上のランダム文字列>' \
   -var='cloudfront_origin_secret=<32文字以上の別のランダム文字列>'
 ```
@@ -226,4 +215,4 @@ cloudfront_origin_secret = "another-random-32-char-secret!!!"
 ## Example
 
 - [`src/docker-compose.yml`](src/docker-compose.yml): ローカル開発用 docker-compose の例
-- [`example-terraform/`](example-terraform/): AWS Lambda + CloudFront にホスティングする Terraform コードの例
+- [`terraform/`](terraform/): AWS ECR + Lambda + CloudFront にホスティングする Terraform コード

@@ -35,7 +35,7 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc" {
 resource "aws_lambda_function" "phpmyadmin" {
   function_name = var.name
   package_type  = "Image"
-  image_uri     = var.image_uri
+  image_uri     = "${module.private_ecr.repository_url}:latest"
   role          = aws_iam_role.lambda.arn
 
   # phpMyAdmin can be slow to initialize; allow enough time per request
