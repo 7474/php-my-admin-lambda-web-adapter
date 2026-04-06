@@ -22,10 +22,7 @@ CloudFront (CDN) → Lambda Function URL → Lambda (phpMyAdmin + Lambda Web Ada
 
 1. **VPCアクセス（Lambda VPC 配置時）**
    - `subnet_ids` と `security_group_ids` を指定することで Lambda を VPC 内に配置し、プライベートサブネットの RDS / Aurora に接続できます。
-   - Lambda を VPC 内に配置すると、外部インターネットへのアウトバウンド通信がデフォルトでブロックされます。外部の DBaaS（PlanetScale など）に接続する場合は、以下の手順で VPC に NAT Gateway を設定してください：
-     1. Internet Gateway を持つパブリックサブネットを作成
-     2. そのサブネットに NAT Gateway を配置
-     3. Lambda が使用するプライベートサブネットのルートテーブルに `0.0.0.0/0 → NAT Gateway` のルートを追加
+   - Lambda を VPC 内に配置すると、外部インターネットへのアウトバウンド通信がデフォルトでブロックされます。外部の DBaaS（PlanetScale など）に接続する場合は、VPC に NAT Gateway を設定する必要があります。詳細は [AWS ドキュメント - Lambda による VPC ネットワーキング](https://docs.aws.amazon.com/ja_jp/lambda/latest/dg/configuration-vpc.html#vpc-internet) を参照してください。
    - VPC 内の RDS/Aurora にのみ接続する場合は NAT Gateway 不要です。
 
 2. **Lambda 読み取り専用ファイルシステム**
@@ -59,21 +56,22 @@ CloudFront (CDN) → Lambda Function URL → Lambda (phpMyAdmin + Lambda Web Ada
        APACHE_RUN_GROUP=#33
    ```
 
-4. **イメージアーキテクチャ（amd64 のみ）**
+4. **イメージアーキテクチャ（amd64 / arm64）**
 
-   `phpmyadmin/phpmyadmin` のベースイメージは `linux/amd64` のみで公開されています。`linux/arm64` 向けにビルドしようとすると QEMU が ELF バイナリを実行できず、以下のようなエラーになります：
+   `phpmyadmin/phpmyadmin` の公式イメージは `linux/amd64` のみ提供されており、`linux/arm64` 向けに直接ビルドしようとすると QEMU が ELF バイナリを実行できず失敗します。
 
-   ```text
-   .buildkit_qemu_emulator: /bin/sh: Invalid ELF image for this architecture
-   WARNING: InvalidBaseImagePlatform: Base image phpmyadmin/phpmyadmin:5.2.3 was pulled with
-     platform "linux/amd64", expected "linux/arm64"
-   ```
+   このリポジトリのビルドワークフローでは、アーキテクチャごとに異なるベースイメージを使うマトリクスビルドで両プラットフォームに対応しています：
 
-   そのため、このリポジトリのビルドワークフローは `linux/amd64` のみを対象としています。AWS Graviton (arm64) インスタンスタイプの Lambda では動作しません。
+   | プラットフォーム | ベースイメージ |
+   |------|------|
+   | `linux/amd64` | `phpmyadmin/phpmyadmin:5.2.3` |
+   | `linux/arm64` | `arm64v8/phpmyadmin:5.2.3` |
+
+   各アーキテクチャ向けのイメージはタグサフィックス（`-amd64` / `-arm64`）付きで ECR Private と GHCR に Push されます。
 
 5. **Docker イメージビルド時の OCI メディアタイプ問題**
 
-   `docker/build-push-action` v4 以降はデフォルトで Provenance Attestation（`provenance: true`）を有効にしており、OCI イメージインデックス形式のマニフェストが生成されます。ECR がこの形式を拒否する場合があるため、ビルドワークフローでは `provenance: false` を明示的に指定しています：
+   `docker/build-push-action` v4 以降はデフォルトで Provenance Attestation（`provenance: true`）を有効にしており、OCI イメージインデックス形式のマニフェストが生成されます。Lambda はこの形式をサポートしないため、ビルドワークフローでは `provenance: false` を明示的に指定しています：
 
    ```yaml
    - uses: docker/build-push-action@...
