@@ -48,7 +48,7 @@ jobs:
       # Login against GitHub Container Registry except on PR
       - name: Log into GitHub Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
