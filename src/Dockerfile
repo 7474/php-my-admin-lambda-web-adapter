@@ -3,7 +3,7 @@
 # PHP 公式イメージから直接ビルドする。
 # phpMyAdmin 5.2.x のサポート対象は PHP < 8.4 のため 8.3 系を使う。
 # https://www.phpmyadmin.net/downloads/
-FROM public.ecr.aws/awsguru/aws-lambda-adapter:1.0.0 AS lambda-adapter
+FROM public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 AS lambda-adapter
 
 FROM php:8.3-apache
 
