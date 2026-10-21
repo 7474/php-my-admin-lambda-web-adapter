@@ -1,6 +1,6 @@
 ARG BASE_IMAGE=phpmyadmin/phpmyadmin:5.2.3
 
-FROM public.ecr.aws/awsguru/aws-lambda-adapter:1.0.0 AS lambda-adapter
+FROM public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 AS lambda-adapter
 
 FROM ${BASE_IMAGE}
 
