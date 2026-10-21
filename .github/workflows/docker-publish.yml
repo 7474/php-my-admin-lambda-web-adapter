@@ -7,6 +7,10 @@ on:
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ main ]
+  # ベースイメージ (php:*-apache) と Debian パッケージのセキュリティ更新を取り込むため定期的に再ビルドする
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
 
 defaults:
   run:
@@ -21,10 +25,8 @@ jobs:
         include:
           - platform: linux/amd64
             tag_suffix: '-amd64'
-            base_image: phpmyadmin/phpmyadmin:5.2.3
           - platform: linux/arm64
             tag_suffix: -arm64
-            base_image: arm64v8/phpmyadmin:5.2.3
     permissions:
       contents: read
       packages: write
@@ -74,6 +76,11 @@ jobs:
           images: |
             ghcr.io/${{ github.repository }}
             ${{ vars.ECR_REPOSITORY_URI }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=ref,event=pr
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Prepare architecture specific tags
         id: arch-tags
@@ -96,8 +103,9 @@ jobs:
         with:
           context: ./src
           platforms: ${{ matrix.platform }}
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.arch-tags.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false
-          build-args: BASE_IMAGE=${{ matrix.base_image }}

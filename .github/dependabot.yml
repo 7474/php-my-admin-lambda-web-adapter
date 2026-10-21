@@ -9,6 +9,11 @@ updates:
     directory: "/src"
     schedule:
       interval: "weekly"
+    ignore:
+      # phpMyAdmin 5.2.x のサポート対象は PHP < 8.4 のため、PHP のマイナー/メジャー更新は手動で行う
+      # https://www.phpmyadmin.net/downloads/
+      - dependency-name: "php"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "terraform"
     directory: "/ecr-terraform"
