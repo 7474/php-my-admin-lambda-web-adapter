@@ -2,6 +2,14 @@
 
 [phpmyadmin-with-basic-auth](https://github.com/7474/phpmyadmin-with-basic-auth) を [AWS Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) で動作させるための構成です。
 
+公式イメージ (`phpmyadmin/phpmyadmin`) は再ビルドが遅れて脆弱性を含むPHPイメージのまま配布されることがあるため、
+公式イメージを `FROM` するのではなく、[公式イメージのApache版Dockerfile](https://github.com/phpmyadmin/docker/blob/master/apache/Dockerfile) を本リポジトリに取り込み、
+[PHP公式イメージ](https://hub.docker.com/_/php) (`php:8.3-apache`) から直接ビルドしています。
+
+- phpMyAdmin: 5.2.3（対応PHPは `>=7.2,<8.4` のため PHP 8.3 系を使用。参照: https://www.phpmyadmin.net/downloads/ ）
+- ベースイメージ及び Debian パッケージの更新を取り込むため、GitHub Actions で毎週再ビルドしています。
+- phpMyAdmin を更新する際は、公式リポジトリの `apache/` 配下の差分を取り込み、Dockerfile の `VERSION` / `SHA256` を更新してください。
+
 ## Usage
 
 `PMA_SSL` 環境変数に `1` を設定することで SSL/TLS 設定を有効にしてサーバに接続するようになります。
@@ -58,16 +66,9 @@ CloudFront (CDN) → Lambda Function URL → Lambda (phpMyAdmin + Lambda Web Ada
 
 4. **イメージアーキテクチャ（amd64 / arm64）**
 
-   `phpmyadmin/phpmyadmin` の公式イメージは `linux/amd64` のみ提供されており、`linux/arm64` 向けに直接ビルドしようとすると QEMU が ELF バイナリを実行できず失敗します。
+   ベースイメージの `php:8.3-apache` はマルチアーキテクチャイメージのため、同じ Dockerfile で `linux/amd64` / `linux/arm64` の両方をビルドできます。
 
-   このリポジトリのビルドワークフローでは、アーキテクチャごとに異なるベースイメージを使うマトリクスビルドで両プラットフォームに対応しています：
-
-   | プラットフォーム | ベースイメージ |
-   |------|------|
-   | `linux/amd64` | `phpmyadmin/phpmyadmin:5.2.3` |
-   | `linux/arm64` | `arm64v8/phpmyadmin:5.2.3` |
-
-   各アーキテクチャ向けのイメージはタグサフィックス（`-amd64` / `-arm64`）付きで ECR Private と GHCR に Push されます。
+   Lambda はマルチアーキテクチャのイメージインデックスを扱えないため（後述の OCI メディアタイプ問題を参照）、ビルドワークフローではプラットフォームごとのマトリクスビルドで単一アーキテクチャのイメージを作成し、タグサフィックス（`-amd64` / `-arm64`）付きで ECR Private と GHCR に Push しています。
 
 5. **Docker イメージビルド時の OCI メディアタイプ問題**
 
@@ -230,7 +231,8 @@ resource "aws_lambda_function" "phpmyadmin" {
 ## Directory Structure
 
 - [`src/`](src/) - コンテナイメージのソース
-  - [`Dockerfile`](src/Dockerfile) - Lambda Web Adapter を組み込んだ phpMyAdmin イメージ
+  - [`Dockerfile`](src/Dockerfile) - 公式イメージの [apache/Dockerfile](https://github.com/phpmyadmin/docker/blob/master/apache/Dockerfile) をベースに Lambda Web Adapter を組み込んだ phpMyAdmin イメージ
+  - [`config.inc.php`](src/config.inc.php), [`helpers.php`](src/helpers.php) - 公式イメージの [apache/](https://github.com/phpmyadmin/docker/tree/master/apache) から無改変で取り込んだ設定ファイル
   - [`config.user.inc.php`](src/config.user.inc.php) - phpMyAdmin SSL設定 & TempDir 設定
   - [`cookie-session-handler.php`](src/cookie-session-handler.php) - Cookie ベースのセッションハンドラー & オリジン検証
   - [`docker-entrypoint.sh`](src/docker-entrypoint.sh) - カスタムエントリポイント（Lambda の読み取り専用ファイルシステム対応）
@@ -263,6 +265,7 @@ terraform apply -var="region=ap-northeast-1"
 ### 3. イメージの Push
 
 `main` ブランチへの push または `v*.*.*` タグの作成で自動的にイメージが ECR Private と GHCR へ Push されます。
+`main` ブランチの push と毎週の定期ビルドでは `latest-amd64` / `latest-arm64` タグが更新されます。
 
 ### 4. Lambda へのデプロイ
 
@@ -280,7 +283,7 @@ cd example-terraform
 terraform init
 terraform apply \
   -var="region=ap-northeast-1" \
-  -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest"
+  -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest-amd64"
 ```
 
 ### セキュアな設定例
@@ -289,7 +292,7 @@ terraform apply \
 
 ```bash
 terraform apply \
-  -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest" \
+  -var="image_uri=<account-id>.dkr.ecr.ap-northeast-1.amazonaws.com/phpmyadmin-lambda-adapter:latest-amd64" \
   -var='pma_blowfish_secret=<32文字以上のランダム文字列>' \
   -var='cloudfront_origin_secret=<32文字以上の別のランダム文字列>'
 ```
